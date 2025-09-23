@@ -1,5 +1,4 @@
 "use client"
-
 import { useState } from "react"
 import {
   View,
@@ -28,83 +27,198 @@ export default function SkinAnalysisScreen({ navigation }) {
   const [showImageOptions, setShowImageOptions] = useState(false)
 
   // Pick photo from gallery or camera
-  const pickPhoto = async (fromCamera = false) => {
-    const permission = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync()
+const getPermissions = async (type = 'camera') => {
+  try {
+    if (type === 'camera') {
+      const cameraPermission = await ImagePicker.getCameraPermissionsAsync()
+      if (cameraPermission.status !== 'granted') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync()
+        if (status !== 'granted') {
+          Alert.alert(
+            'Camera Permission Required',
+            'Please enable camera permission from device settings to take photos.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'OK' }
+            ]
+          )
+          return false
+        }
+      }
+    } else {
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync()
+      if (mediaPermission.status !== 'granted') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+        if (status !== 'granted') {
+          Alert.alert(
+            'Gallery Permission Required',
+            'Please enable gallery permission from device settings to select photos.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'OK' }
+            ]
+          )
+          return false
+        }
+      }
+    }
+    return true
+  } catch (error) {
+    console.error('Permission error:', error)
+    return false
+  }
+}
 
-    if (permission.status !== "granted") {
-      Alert.alert("Permission needed", "Please allow permissions to continue!")
+// ✅ Fixed pickPhoto function
+const pickPhoto = async (fromCamera = false) => {
+  try {
+    console.log(`Skin ${fromCamera ? 'Camera' : 'Gallery'} selected`)
+
+    // Get permissions
+    const hasPermission = await getPermissions(fromCamera ? 'camera' : 'gallery')
+    if (!hasPermission) {
+      setShowImageOptions(false)
       return
     }
 
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 1,
-        })
-      : await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 1,
-        })
-
-    if (!result.canceled) {
-      const asset = result.assets[0]
-      setImageUri(asset.uri)
-      setResult(null) // Clear previous result
-      setShowImageOptions(false)
-      sendToBackend(asset) // Auto-analyze after selection
+    const options = {
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8, // Optimize for network
+      base64: false,
+      exif: false,
     }
-  }
 
-  // Send image to backend using FormData
-  const sendToBackend = async (asset) => {
-    if (!asset && !imageUri) return Alert.alert("Select a photo first!")
+    console.log('Launching skin image picker...')
 
-    setLoading(true)
-    const formData = new FormData()
-    formData.append("image", {
-      uri: asset?.uri || imageUri,
-      name: "photo.jpg",
-      type: "image/jpeg",
+    let result
+    if (fromCamera) {
+      result = await ImagePicker.launchCameraAsync(options)
+    } else {
+      result = await ImagePicker.launchImageLibraryAsync(options)
+    }
+
+    console.log('Skin image picker result:', {
+      canceled: result.canceled,
+      hasAssets: !!result.assets,
+      assetsLength: result.assets?.length
     })
 
-    try {
-      const response = await fetch(`${BASE_URL}/api/skin/analyze`, {
-        method: "POST",
-        body: formData,
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0]
+      console.log('Skin image selected:', {
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+        fileSize: asset.fileSize
       })
 
-      const data = await response.json()
-      console.log("✅ Skin analysis result:", data)
-
-      // Show result in UI if data exists
-      if (data.data) {
-        const analysis = data.data
-        setResult({
-          class: analysis.class,
-          confidence: (analysis.confidence * 100).toFixed(1),
-          rawConfidence: analysis.confidence,
-        })
-      } else {
-        Alert.alert("Error", data.message || "Something went wrong!")
-        setResult({ error: "Analysis failed. Please try again." })
-      }
-    } catch (error) {
-      console.error("Skin analysis error:", error)
-      Alert.alert("Error", "Something went wrong!")
-      setResult({ error: "Network error. Please check your connection." })
-    } finally {
-      setLoading(false)
+      setImageUri(asset.uri)
+      setResult(null)
+      setShowImageOptions(false)
+      
+      // Auto analyze with delay
+      setTimeout(() => {
+        sendToBackend(asset)
+      }, 300)
+    } else {
+      console.log('Skin image picker canceled')
+      setShowImageOptions(false)
     }
+  } catch (error) {
+    console.error('Skin image picker error:', error)
+    setShowImageOptions(false)
+    Alert.alert(
+      'Error', 
+      `Failed to ${fromCamera ? 'take photo' : 'select image'}. Please try again.`
+    )
   }
+}
+
+// ✅ Fixed backend function
+const sendToBackend = async (asset) => {
+  if (!asset && !imageUri) {
+    Alert.alert("Error", "Please select a photo first!")
+    return
+  }
+
+  const imageSource = asset?.uri || imageUri
+  console.log('Sending skin image to backend:', imageSource)
+  console.log('Skin API Endpoint:', `${BASE_URL}/api/skin/analyze`)
+
+  setLoading(true)
+  
+  try {
+    // Create FormData
+    const formData = new FormData()
+    
+    // File extension and MIME type
+    const uriParts = imageSource.split('.')
+    const fileType = uriParts[uriParts.length - 1].toLowerCase()
+    const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg'
+    
+    console.log('Skin file info:', { fileType, mimeType })
+
+    // Append file to FormData (using "image" as per skin API)
+    formData.append('image', {
+      uri: imageSource,
+      name: `skin_${Date.now()}.${fileType}`,
+      type: mimeType,
+    })
+
+    console.log('Making skin analysis API request...')
+
+    // API call WITHOUT Content-Type header (let FormData handle it)
+    const response = await fetch(`${BASE_URL}/api/skin/analyze`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+        // DON'T set Content-Type for FormData
+      },
+    })
+
+    console.log('Skin API response status:', response.status)
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    console.log('Skin API Response:', JSON.stringify(data, null, 2))
+
+    // Handle skin API specific response format
+    if (data.data) {
+      const analysis = data.data
+      setResult({
+        class: analysis.class,
+        confidence: (analysis.confidence * 100).toFixed(1),
+        rawConfidence: analysis.confidence,
+      })
+    } else if (data) {
+      // Fallback for different response format
+      setResult(data)
+    } else {
+      throw new Error('Empty response from skin analysis server')
+    }
+
+  } catch (error) {
+    console.error('Skin API Error:', error)
+    
+    let errorMessage = 'Network error occurred'
+    if (error.message.includes('fetch')) {
+      errorMessage = 'Unable to connect to server. Check your internet connection.'
+    } else if (error.message.includes('HTTP error')) {
+      errorMessage = 'Server error occurred. Please try again later.'
+    }
+
+    Alert.alert('Skin Analysis Failed', errorMessage)
+    setResult({ error: errorMessage })
+  } finally {
+    setLoading(false)
+  }
+}
 
   // Helper function to get skin condition info
   const getSkinConditionInfo = (condition) => {

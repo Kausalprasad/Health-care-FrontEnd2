@@ -19,6 +19,7 @@ const HealthCheckupApp = ({ navigation }) => {
   const handleEyeHealth = () => navigation.navigate('EyeScreen');
   const handleMelanomaDetection = () => navigation.navigate('MelanomaScreen');
    const handleHairHealth = () => navigation.navigate('HairCheckScreen');
+   const handleVitals=()=>navigation.navigate('VitalsScreen')
 
   const StaticAnalysisContent = () => (
     <View style={styles.contentContainer}>
@@ -108,21 +109,21 @@ const HealthCheckupApp = ({ navigation }) => {
         </TouchableOpacity>
 
 
-        <TouchableOpacity style={styles.card} onPress={handleEyeHealth}>
-          <View style={styles.cardContent}>
-            <View style={styles.cardTextContainer}>
-              <Text style={styles.cardTitle}>Eye Health</Text>
-              <Text style={styles.cardSubtitle}>Eye health recommendations</Text>
-            </View>
-            <View style={styles.iconContainer}>
-              <Image
-                source={require('../../../assets/icons/camara.png')}
-                style={{ width: 35, height: 35, resizeMode: 'contain' }}
-              />
-            </View>
+        <TouchableOpacity style={styles.card} onPress={handleVitals}>
+  <View style={styles.cardContent}>
+    <View style={styles.cardTextContainer}>
+      <Text style={styles.cardTitle}>Vitals Check</Text>
+      <Text style={styles.cardSubtitle}>health vitals quickly</Text>
+    </View>
+    <View style={styles.iconContainer}>
+      <Image
+        source={require('../../../assets/icons/camara.png')}
+        style={{ width: 35, height: 35, resizeMode: 'contain' }}
+      />
+    </View>
+  </View>
+</TouchableOpacity>
 
-          </View>
-        </TouchableOpacity>
 
 
       </View>

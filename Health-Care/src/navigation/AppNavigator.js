@@ -31,6 +31,11 @@ import MentalHealthScreen from "../screens/Model/MentalHealthScreen";
 import HairCheckScreen from "../screens/Model/HairCheckScreen";
 import Sidebar from "../components/Sidebar";
 import UserProfileScreen from "../screens/UserProfile/UserProfileScreen";
+import ProfileSetupStep2 from "../screens/UserProfile/ProfileSetupStep2";
+import ProfileSetupStep3 from "../screens/UserProfile/ProfileSetupStep3";
+import ProfileSetupStep1 from "../screens/UserProfile/ProfileSetupStep1";
+import ProfileViewScreen from "../screens/UserProfile/ProfileViewScreen";
+import VitalsScreen from "../screens/Vitals/VitalsScreen";
 
 
 
@@ -97,6 +102,11 @@ export default function AppNavigator() {
   <Stack.Screen name="MentalHealthScreen" component={MentalHealthScreen} />
   <Stack.Screen name="Sidebar" component={Sidebar}/>
   <Stack.Screen name="UserProfileScreen" component={UserProfileScreen}/>
+  <Stack.Screen name="ProfileSetupStep2" component={ProfileSetupStep2}/>
+  <Stack.Screen name="ProfileSetupStep3" component={ProfileSetupStep3}/>
+  <Stack.Screen name="ProfileSetupStep1" component={ProfileSetupStep1}/>
+  <Stack.Screen name="ProfileViewScreen" component={ProfileViewScreen}/>
+  <Stack.Screen name="VitalsScreen" component={VitalsScreen}/>
   </>
   
 </Stack.Navigator>

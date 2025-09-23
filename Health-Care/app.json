@@ -14,7 +14,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs camera access to analyze tongue photos for health insights",
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select images for health analysis"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,16 +26,44 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.kaushal00.HealthCare"
+      "package": "com.kaushal00.HealthCare",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_DISTANCE",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_OXYGEN_SATURATION",
+        "android.permission.health.READ_EXERCISE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "expo-web-browser",
-      "expo-font",
-      "expo-asset"
-    ],
+   "plugins": [
+  "expo-web-browser",
+  "expo-font",
+  "expo-asset",
+  "./androidManifestPlugin.js",
+  "expo-health-connect",
+  [
+    "expo-build-properties",
+    {
+      "android": {
+        "compileSdkVersion": 35,
+        "targetSdkVersion": 34,
+        "minSdkVersion": 26
+      }
+    }
+  ]
+],
+
     "extra": {
       "eas": {
         "projectId": "8e25d82b-e255-4066-90d8-8f1f9e7d891c"

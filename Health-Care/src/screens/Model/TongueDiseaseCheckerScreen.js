@@ -12,6 +12,7 @@ import {
   StatusBar,
   Dimensions,
   Modal,
+  Platform,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import * as ImagePicker from "expo-image-picker"
@@ -25,89 +26,200 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false)
   const [showImageOptions, setShowImageOptions] = useState(false)
 
-  // ✅ Pick photo (Camera/Gallery) — iOS and Android compatible
-  const pickPhoto = async (fromCamera = false) => {
-    const permission = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync()
+  // ✅ Expo-specific permission handling
+  const getPermissions = async (type = 'camera') => {
+    try {
+      if (type === 'camera') {
+        // Camera permission
+        const cameraPermission = await ImagePicker.getCameraPermissionsAsync()
+        if (cameraPermission.status !== 'granted') {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync()
+          if (status !== 'granted') {
+            Alert.alert(
+              'Camera Permission Required',
+              'Please enable camera permission from device settings to take photos.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'OK' }
+              ]
+            )
+            return false
+          }
+        }
+      } else {
+        // Media Library permission
+        const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync()
+        if (mediaPermission.status !== 'granted') {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+          if (status !== 'granted') {
+            Alert.alert(
+              'Gallery Permission Required',
+              'Please enable gallery permission from device settings to select photos.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'OK' }
+              ]
+            )
+            return false
+          }
+        }
+      }
+      return true
+    } catch (error) {
+      console.error('Permission error:', error)
+      return false
+    }
+  }
 
-    if (permission.status !== "granted") {
-      Alert.alert("Permission needed", "Please allow permissions to continue!")
+  // ✅ Enhanced pickPhoto function
+  const pickPhoto = async (fromCamera = false) => {
+    try {
+      console.log(`📸 ${fromCamera ? 'Camera' : 'Gallery'} selected`)
+
+      // Get permissions
+      const hasPermission = await getPermissions(fromCamera ? 'camera' : 'gallery')
+      if (!hasPermission) {
+        setShowImageOptions(false)
+        return
+      }
+
+      const options = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8, // Optimize for network
+        base64: false,
+        exif: false,
+      }
+
+      console.log('📱 Launching image picker...')
+
+      let result
+      if (fromCamera) {
+        result = await ImagePicker.launchCameraAsync(options)
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync(options)
+      }
+
+      console.log('📋 Image picker result:', {
+        canceled: result.canceled,
+        hasAssets: !!result.assets,
+        assetsLength: result.assets?.length
+      })
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0]
+        console.log('✅ Image selected:', {
+          uri: asset.uri,
+          width: asset.width,
+          height: asset.height,
+          fileSize: asset.fileSize
+        })
+
+        setImageUri(asset.uri)
+        setResult(null)
+        setShowImageOptions(false)
+        
+        // Auto analyze with delay
+        setTimeout(() => {
+          sendToBackend(asset)
+        }, 300)
+      } else {
+        console.log('❌ Image picker canceled or no assets')
+        setShowImageOptions(false)
+      }
+    } catch (error) {
+      console.error('❌ Image picker error:', error)
+      setShowImageOptions(false)
+      Alert.alert(
+        'Error', 
+        `Failed to ${fromCamera ? 'take photo' : 'select image'}. Please try again.`
+      )
+    }
+  }
+
+  // ✅ Enhanced backend function
+  const sendToBackend = async (asset) => {
+    if (!asset && !imageUri) {
+      Alert.alert("Error", "Please select a photo first!")
       return
     }
 
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 1,
-        })
-      : await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 1,
-        })
-
-   if (!result.canceled) {
-    const asset = result.assets[0]
-    setImageUri(asset.uri)
-    setResult(null) // Clear old result
-    setShowImageOptions(false) // ✅ Modal close kar do
-    sendToBackend(asset) // Auto analyze
-  } else {
-    setShowImageOptions(false) // ✅ Cancel karne pe bhi modal close kar do
-  }
-  }
-
-  // ✅ Send to backend
-  const sendToBackend = async (asset) => {
-    if (!asset && !imageUri) return Alert.alert("Select a photo first!")
+    const imageSource = asset?.uri || imageUri
+    console.log('🚀 Sending to backend:', imageSource)
+    console.log('🌐 API Endpoint:', `${BASE_URL}/api/tongue-disease`)
 
     setLoading(true)
-    const formData = new FormData()
-    formData.append("file", {
-      uri: asset?.uri || imageUri,
-      name: "tongue.jpg",
-      type: "image/jpeg",
-    })
-
+    
     try {
+      // Create FormData
+      const formData = new FormData()
+      
+      // File extension and MIME type
+      const uriParts = imageSource.split('.')
+      const fileType = uriParts[uriParts.length - 1].toLowerCase()
+      const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg'
+      
+      console.log('📁 File info:', { fileType, mimeType })
+
+      // Append file to FormData
+      formData.append('file', {
+        uri: imageSource,
+        name: `tongue_${Date.now()}.${fileType}`,
+        type: mimeType,
+      } )
+
+      console.log('📤 Making API request...')
+
+      // API call without Content-Type header (let FormData handle it)
       const response = await fetch(`${BASE_URL}/api/tongue-disease`, {
-        method: "POST",
+        method: 'POST',
         body: formData,
         headers: {
-          "Content-Type": "multipart/form-data",
+          'Accept': 'application/json',
+          // Don't set Content-Type for FormData
         },
       })
 
-      const data = await response.json()
-      console.log("✅ Tongue analysis result:", data)
+      console.log('📥 Response status:', response.status)
+      console.log('📥 Response headers:', response.headers)
 
-      if (response.ok && data) {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('✅ API Response:', JSON.stringify(data, null, 2))
+
+      if (data) {
         setResult(data)
       } else {
-        Alert.alert("Error", data.error || "Something went wrong!")
-        setResult({ error: "Analysis failed. Please try again." })
+        throw new Error('Empty response from server')
       }
+
     } catch (error) {
-      console.error("Tongue analysis error:", error)
-      Alert.alert("Error", "Network error, please try again.")
-      setResult({ error: "Network error. Please check your connection." })
+      console.error('❌ API Error:', error)
+      
+      let errorMessage = 'Network error occurred'
+      if (error.message.includes('fetch')) {
+        errorMessage = 'Unable to connect to server. Check your internet connection.'
+      } else if (error.message.includes('HTTP error')) {
+        errorMessage = 'Server error occurred. Please try again later.'
+      }
+
+      Alert.alert('Analysis Failed', errorMessage)
+      setResult({ error: errorMessage })
     } finally {
       setLoading(false)
     }
   }
 
-  // ✅ Enhanced result rendering with better formatting
+  // Rest of your render methods stay the same...
   const renderValue = (value, key) => {
+    // Your existing renderValue code
     if (value === null || value === undefined) return null
-
-    // Skip raw_scores from display
     if (key === 'raw_scores') return null
 
-    // Handle diseases array specially
     if (key === 'diseases' && Array.isArray(value)) {
       return (
         <View key={key} style={styles.diseaseSection}>
@@ -165,7 +277,6 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
       )
     }
 
-    // Handle other arrays
     if (Array.isArray(value)) {
       return (
         <View key={key} style={{ marginTop: 12 }}>
@@ -180,7 +291,6 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
       )
     }
 
-    // Handle objects
     if (typeof value === "object") {
       return (
         <View key={key} style={{ marginTop: 12 }}>
@@ -200,7 +310,6 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
       )
     }
 
-    // Handle simple values
     return (
       <View key={key} style={{ marginTop: 12 }}>
         <Text style={styles.resultSectionTitle}>{key.replace(/_/g, ' ').toUpperCase()}:</Text>
@@ -242,6 +351,7 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#7475B4" />
+      
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
