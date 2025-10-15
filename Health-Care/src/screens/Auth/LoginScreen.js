@@ -6,19 +6,22 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Alert,
   StatusBar,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { AntDesign } from "@expo/vector-icons";
 import { FontAwesome } from "@expo/vector-icons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithCredential } from "firebase/auth";
 import { auth } from "../../api/firebaseConfig";
 import { AuthContext } from "../../context/AuthContext";
+
+// Biometric imports
+import * as LocalAuthentication from "expo-local-authentication";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Google Auth imports
 import * as WebBrowser from "expo-web-browser";
@@ -32,12 +35,38 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     expoClientId: "216997849771-3gpcadeh6q1k12lntbl2e726s38gfsrb.apps.googleusercontent.com",
     androidClientId: "216997849771-3gpcadeh6q1k12lntbl2e726s38gfsrb.apps.googleusercontent.com",
     iosClientId: "216997849771-3gpcadeh6q1k12lntbl2e726s38gfsrb.apps.googleusercontent.com",
   });
+
+  // Check biometric support and if user has enabled it
+  useEffect(() => {
+    checkBiometricSupport();
+  }, []);
+
+  const checkBiometricSupport = async () => {
+    try {
+      const compatible = await LocalAuthentication.hasHardwareAsync();
+      console.log("Biometric Hardware:", compatible);
+      
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      console.log("Biometric Enrolled:", enrolled);
+      
+      setIsBiometricSupported(compatible && enrolled);
+
+      // Check if biometric is enabled for this user
+      const enabled = await AsyncStorage.getItem("biometricEnabled");
+      console.log("Biometric Enabled in Storage:", enabled);
+      setBiometricEnabled(enabled === "true");
+    } catch (error) {
+      console.log("Biometric check error:", error);
+    }
+  };
 
   // Google Auth response handle
   useEffect(() => {
@@ -54,6 +83,39 @@ export default function LoginScreen({ navigation }) {
     }
   }, [response]);
 
+  const handleBiometricAuth = async () => {
+    try {
+      const biometricAuth = await LocalAuthentication.authenticateAsync({
+        promptMessage: "Authenticate to login",
+        cancelLabel: "Cancel",
+        disableDeviceFallback: false,
+      });
+
+      if (biometricAuth.success) {
+        // Get stored credentials
+        const storedEmail = await AsyncStorage.getItem("userEmail");
+        const storedPassword = await AsyncStorage.getItem("userPassword");
+
+        if (storedEmail && storedPassword) {
+          setIsLoading(true);
+          const userCredential = await signInWithEmailAndPassword(
+            auth,
+            storedEmail,
+            storedPassword
+          );
+          setUser(userCredential.user);
+        } else {
+          Alert.alert("Error", "No saved credentials found. Please login manually.");
+        }
+      }
+    } catch (error) {
+      console.log("Biometric auth error:", error);
+      Alert.alert("Authentication Failed", "Please try again or use manual login.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert("Error", "Please fill in all fields");
@@ -68,7 +130,52 @@ export default function LoginScreen({ navigation }) {
     setIsLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      setUser(userCredential.user);
+      
+      console.log("Login Success!");
+      console.log("isBiometricSupported:", isBiometricSupported);
+      console.log("biometricEnabled:", biometricEnabled);
+      
+      // After successful login, ask if user wants to enable biometric
+      if (isBiometricSupported && !biometricEnabled) {
+        console.log("Showing biometric enable alert...");
+        Alert.alert(
+          "Enable Biometric Login",
+          Platform.OS === "ios" 
+            ? "Would you like to enable Face ID/Touch ID for faster login?" 
+            : "Would you like to enable Face/Fingerprint unlock for faster login?",
+          [
+            {
+              text: "Not Now",
+              style: "cancel",
+              onPress: () => {
+                console.log("User declined biometric");
+                setUser(userCredential.user);
+              }
+            },
+            {
+              text: "Enable",
+              onPress: async () => {
+                try {
+                  console.log("Enabling biometric...");
+                  // Store credentials securely
+                  await AsyncStorage.setItem("userEmail", email);
+                  await AsyncStorage.setItem("userPassword", password);
+                  await AsyncStorage.setItem("biometricEnabled", "true");
+                  setBiometricEnabled(true);
+                  console.log("Biometric enabled successfully!");
+                  Alert.alert("Success", "Biometric login enabled! You can now use it next time.");
+                  setUser(userCredential.user);
+                } catch (error) {
+                  console.log("Error saving credentials:", error);
+                  setUser(userCredential.user);
+                }
+              },
+            },
+          ]
+        );
+      } else {
+        setUser(userCredential.user);
+      }
     } catch (error) {
       let errorMessage = "Login failed. Please try again.";
       switch (error.code) {
@@ -151,20 +258,38 @@ export default function LoginScreen({ navigation }) {
           <Text style={styles.forgot}>Forgot Password</Text>
         </TouchableOpacity>
 
-        {/* Login Button */}
-        <TouchableOpacity
-          style={styles.loginButton}
-          onPress={handleLogin}
-          disabled={isLoading}
-        >
-          <Text style={styles.loginText}>
-            {isLoading ? "Signing In..." : "Login"}
-          </Text>
-        </TouchableOpacity>
+        {/* Login Button with Biometric Button Side by Side */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            <Text style={styles.loginText}>
+              {isLoading ? "Signing In..." : "Login"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Biometric Button beside Login */}
+          {isBiometricSupported && biometricEnabled && (
+            <TouchableOpacity
+              style={styles.biometricButton}
+              onPress={handleBiometricAuth}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons
+                name={Platform.OS === "ios" ? "face-recognition" : "fingerprint"}
+                size={28}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Register */}
         <Text style={styles.registerText}>
-          Don’t have an account?{" "}
+          Don't have an account?{" "}
           <Text
             style={styles.registerLink}
             onPress={() => navigation.navigate("Signup")}
@@ -209,7 +334,6 @@ const styles = StyleSheet.create({
     marginTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
     flex: 1,
     backgroundColor: "#fff",
-    // paddingHorizontal: 20,
     paddingTop: 60,
   },
   title: {
@@ -219,7 +343,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 8,
     fontFamily: "Poppins_400Regular",
-    style:"semi-bold",
   },
   subtitle: {
     fontSize: 16,
@@ -227,20 +350,38 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 20,
     fontWeight: "500",
-    style:"medium",
     lineHeight: 26,
-      fontFamily: "Poppins_400Regular",
+    fontFamily: "Poppins_400Regular",
   },
- curvedBox: {
-  flex: 1,
-  backgroundColor: "#EDEBFF",
-  borderTopLeftRadius: 50,
-  borderTopRightRadius: 40,
-  padding: 40,
-  alignItems: "center",
-  marginTop: 30,
-  
-},
+  curvedBox: {
+    flex: 1,
+    backgroundColor: "#EDEBFF",
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 40,
+    padding: 40,
+    alignItems: "center",
+    marginTop: 30,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    marginTop: 10,
+    gap: 10,
+  },
+  biometricButton: {
+    width: 55,
+    height: 55,
+    borderRadius: 10,
+    backgroundColor: "#6C63FF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#6C63FF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -260,22 +401,21 @@ const styles = StyleSheet.create({
   forgot: {
     color: "#333",
     fontSize: 15,
-     fontWeight: "500",
-     fontFamily: "Poppins_400Regular",
+    fontWeight: "500",
+    fontFamily: "Poppins_400Regular",
   },
   loginButton: {
+    flex: 1,
     backgroundColor: "#6C63FF",
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
-    width: "100%",
-    marginTop: 10,
   },
   loginText: {
     color: "#fff",
-   fontSize: 15,
-     fontWeight: "500",
-     fontFamily: "Poppins_400Regular",
+    fontSize: 15,
+    fontWeight: "500",
+    fontFamily: "Poppins_400Regular",
   },
   registerText: {
     marginTop: 20,
@@ -309,8 +449,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderColor: "rgba(204, 204, 204, 1)",
-    // borderWidth: 1,
-    // borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 20,
     width: "100%",

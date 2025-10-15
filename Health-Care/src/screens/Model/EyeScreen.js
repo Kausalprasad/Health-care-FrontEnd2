@@ -24,73 +24,191 @@ export default function EyeScreen({ navigation }) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [showImageOptions, setShowImageOptions] = useState(false)
-
-  const pickImage = async (fromCamera = false) => {
-    let permissionResult
-    if (fromCamera) {
-      permissionResult = await ImagePicker.requestCameraPermissionsAsync()
-      if (!permissionResult.granted) {
-        Alert.alert("Permission Denied", "Camera access is required!")
-        return
+const getPermissions = async (type = 'camera') => {
+  try {
+    if (type === 'camera') {
+      const cameraPermission = await ImagePicker.getCameraPermissionsAsync()
+      if (cameraPermission.status !== 'granted') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync()
+        if (status !== 'granted') {
+          Alert.alert(
+            'Camera Permission Required',
+            'Please enable camera permission from device settings to take photos.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'OK' }
+            ]
+          )
+          return false
+        }
       }
     } else {
-      permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync()
-      if (!permissionResult.granted) {
-        Alert.alert("Permission Denied", "Gallery access is required!")
-        return
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync()
+      if (mediaPermission.status !== 'granted') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+        if (status !== 'granted') {
+          Alert.alert(
+            'Gallery Permission Required',
+            'Please enable gallery permission from device settings to select photos.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'OK' }
+            ]
+          )
+          return false
+        }
       }
     }
+    return true
+  } catch (error) {
+    console.error('Permission error:', error)
+    return false
+  }
+}
 
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 1,
-          allowsEditing: true,
-          aspect: [1, 1],
-        })
-      : await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 1,
-          allowsEditing: true,
-          aspect: [1, 1],
-        })
+// ✅ Fixed pickImage function
+const pickImage = async (fromCamera = false) => {
+  try {
+    console.log(`Eye ${fromCamera ? 'Camera' : 'Gallery'} selected`)
 
-    if (!result.canceled) {
+    // Get permissions
+    const hasPermission = await getPermissions(fromCamera ? 'camera' : 'gallery')
+    if (!hasPermission) {
+      setShowImageOptions(false)
+      return
+    }
+
+    const options = {
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8, // Optimize for network
+      base64: false,
+      exif: false,
+    }
+
+    console.log('Launching eye image picker...')
+
+    let result
+    if (fromCamera) {
+      result = await ImagePicker.launchCameraAsync(options)
+    } else {
+      result = await ImagePicker.launchImageLibraryAsync(options)
+    }
+
+    console.log('Eye image picker result:', {
+      canceled: result.canceled,
+      hasAssets: !!result.assets,
+      assetsLength: result.assets?.length
+    })
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0]
+      console.log('Eye image selected:', {
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+        fileSize: asset.fileSize
+      })
+
       setPhoto(asset.uri)
       setResult(null)
       setShowImageOptions(false)
-      uploadImage(asset)
+      
+      // Auto analyze with delay
+      setTimeout(() => {
+        uploadImage(asset)
+      }, 300)
+    } else {
+      console.log('Eye image picker canceled')
+      setShowImageOptions(false)
     }
+  } catch (error) {
+    console.error('Eye image picker error:', error)
+    setShowImageOptions(false)
+    Alert.alert(
+      'Error', 
+      `Failed to ${fromCamera ? 'take photo' : 'select image'}. Please try again.`
+    )
+  }
+}
+
+// ✅ Fixed uploadImage function
+const uploadImage = async (asset) => {
+  if (!asset && !photo) {
+    Alert.alert("Error", "Please select a photo first!")
+    return
   }
 
-  const uploadImage = async (asset) => {
-    setLoading(true)
-    setResult(null)
-    try {
-      const formData = new FormData()
-      formData.append("image", {
-        uri: asset.uri,
-        type: "image/jpeg",
-        name: "eye.jpg",
-      })
+  const imageSource = asset?.uri || photo
+  console.log('Uploading eye image to backend:', imageSource)
+  console.log('Eye API Endpoint:', `${BASE_URL}/api/predict/eye`)
 
-      const response = await fetch(`${BASE_URL}/api/predict/eye`, {
-        method: "POST",
-        body: formData,
-        headers: { "Content-Type": "multipart/form-data" },
-      })
+  setLoading(true)
+  setResult(null)
+  
+  try {
+    // Create FormData
+    const formData = new FormData()
+    
+    // File extension and MIME type
+    const uriParts = imageSource.split('.')
+    const fileType = uriParts[uriParts.length - 1].toLowerCase()
+    const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg'
+    
+    console.log('Eye file info:', { fileType, mimeType })
 
-      const data = await response.json()
-      console.log("✅ Eye analysis result:", data)
+    // Append file to FormData (using "image" as per eye API)
+    formData.append('image', {
+      uri: imageSource,
+      name: `eye_${Date.now()}.${fileType}`,
+      type: mimeType,
+    })
+
+    console.log('Making eye analysis API request...')
+
+    // API call WITHOUT Content-Type header (let FormData handle it)
+    const response = await fetch(`${BASE_URL}/api/predict/eye`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+        // DON'T set Content-Type for FormData
+      },
+    })
+
+    console.log('Eye API response status:', response.status)
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    console.log('Eye API Response:', JSON.stringify(data, null, 2))
+
+    if (data) {
       setResult(data)
-    } catch (err) {
-      console.error("Eye analysis error:", err)
-      setResult({ error: "Something went wrong" })
-    } finally {
-      setLoading(false)
+    } else {
+      throw new Error('Empty response from eye analysis server')
     }
+
+  } catch (error) {
+    console.error('Eye API Error:', error)
+    
+    let errorMessage = 'Network error occurred'
+    if (error.message.includes('fetch')) {
+      errorMessage = 'Unable to connect to server. Check your internet connection.'
+    } else if (error.message.includes('HTTP error')) {
+      errorMessage = 'Server error occurred. Please try again later.'
+    }
+
+    Alert.alert('Eye Analysis Failed', errorMessage)
+    setResult({ error: errorMessage })
+  } finally {
+    setLoading(false)
   }
+}
+
 
   // Helper function to get condition info
   const getConditionInfo = (condition) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useContext } from 'react';
+import React, { useEffect, useRef, useContext, useState } from 'react';
 import {
   View,
   Text,
@@ -7,24 +7,47 @@ import {
   Dimensions,
   Animated,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BASE_URL } from '../config/config';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 const Sidebar = ({ visible, onClose, navigation }) => {
   const { logout, user } = useContext(AuthContext);
+  const [profile, setProfile] = useState(null);
+
   const handlePress = () => {
     // Navigate to Profile screen
-    navigation.navigate('UserProfileScreen'); // 'Profile' aapke navigator me screen ka naam hona chahiye
+    navigation.navigate('UserProfileScreen');
   };
 
   const slideAnim = useRef(new Animated.Value(-screenWidth * 0.8)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
 
+  // Fetch profile data when sidebar becomes visible
+  const fetchProfile = async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) return;
+      const res = await fetch(`${BASE_URL}/api/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setProfile(data.data);
+      }
+    } catch (err) {
+      console.error('Fetch profile error:', err);
+    }
+  };
+
   useEffect(() => {
     if (visible) {
+      fetchProfile(); // Fetch profile data when sidebar opens
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,
@@ -71,6 +94,14 @@ const Sidebar = ({ visible, onClose, navigation }) => {
 
   if (!visible) return null;
 
+  // Get profile photo URL and user data
+  const profilePhotoUrl = profile?.basicInfo?.profilePhoto?.url 
+    ? `${BASE_URL}${profile.basicInfo.profilePhoto.url}` 
+    : null;
+  
+  const displayName = profile?.basicInfo?.fullName || user?.displayName || user?.email?.split('@')[0] || 'User';
+  const displayEmail = profile?.contactInfo?.email || user?.email || 'email';
+
   return (
     <View style={styles.container}>
       {/* Overlay */}
@@ -89,16 +120,26 @@ const Sidebar = ({ visible, onClose, navigation }) => {
         </View>
 
         {/* User Profile */}
-         <TouchableOpacity style={styles.profileSection} onPress={handlePress}>
-    
-          <View style={styles.profilePic} />
+        <TouchableOpacity style={styles.profileSection} onPress={handlePress}>
+          <View style={styles.profilePic}>
+            {profilePhotoUrl ? (
+              <Image 
+                source={{ uri: profilePhotoUrl }} 
+                style={styles.profileImage}
+              />
+            ) : (
+              <Text style={styles.profileInitial}>
+                {displayName.charAt(0).toUpperCase()}
+              </Text>
+            )}
+          </View>
           <Text style={styles.userName}>
-            {user?.displayName || user?.email?.split('@')[0] || 'Anushka'}
+            {displayName}
           </Text>
           <Text style={styles.userEmail}>
-            {user?.email || 'email'}
+            {displayEmail}
           </Text>
-      </TouchableOpacity>
+        </TouchableOpacity>
 
         {/* Divider */}
         <View style={styles.divider} />
@@ -168,6 +209,19 @@ const styles = StyleSheet.create({
     borderRadius: 35,
     backgroundColor: '#E0E0E0',
     marginBottom: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+  },
+  profileInitial: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#7475B4',
   },
   userName: {
     fontSize: 18,

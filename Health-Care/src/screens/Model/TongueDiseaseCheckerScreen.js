@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import {
   View,
   Text,
@@ -12,102 +12,365 @@ import {
   StatusBar,
   Dimensions,
   Modal,
+  Animated,
+  Platform,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import * as ImagePicker from "expo-image-picker"
+import { CameraView, useCameraPermissions } from "expo-camera"
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator'
 import { BASE_URL } from "../../config/config"
+import * as Font from 'expo-font'
 
-const { width } = Dimensions.get("window")
+const { width, height } = Dimensions.get("window")
 
 const TongueDiseaseCheckerScreen = ({ navigation }) => {
   const [imageUri, setImageUri] = useState(null)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [showImageOptions, setShowImageOptions] = useState(false)
+  const [showCamera, setShowCamera] = useState(false)
+  const [permission, requestPermission] = useCameraPermissions()
+  const [fontsLoaded, setFontsLoaded] = useState(false)
+  const cameraRef = useRef(null)
+  
+  // Animation for guide box
+  const pulseAnim = useRef(new Animated.Value(1)).current
+  const [guideColor, setGuideColor] = useState("#FFD700")
+  const [cameraFacing, setCameraFacing] = useState("front")
+  const [countdown, setCountdown] = useState(null)
+  const autoClickTimerRef = useRef(null)
 
-  // ✅ Pick photo (Camera/Gallery) — iOS and Android compatible
+  // Load fonts
+  useEffect(() => {
+    async function loadFonts() {
+      try {
+        await Font.loadAsync({
+          'Ionicons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+        })
+        setFontsLoaded(true)
+      } catch (error) {
+        console.log('Font loading error:', error)
+        setFontsLoaded(true)
+      }
+    }
+    loadFonts()
+  }, [])
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start()
+  }, [])
+
+  // Auto-capture after 5 seconds when camera opens
+  useEffect(() => {
+    if (showCamera) {
+      startAutoCapture()
+    } else {
+      cancelAutoCapture()
+    }
+    
+    return () => {
+      cancelAutoCapture()
+    }
+  }, [showCamera])
+
+  const getPermissions = async (type = 'camera') => {
+    try {
+      if (type === 'camera') {
+        if (!permission) {
+          return false
+        }
+        if (!permission.granted) {
+          const result = await requestPermission()
+          return result.granted
+        }
+        return true
+      } else {
+        const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync()
+        if (mediaPermission.status !== 'granted') {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+          if (status !== 'granted') {
+            Alert.alert(
+              'Gallery Permission Required',
+              'Please enable gallery permission from device settings to select photos.'
+            )
+            return false
+          }
+        }
+      }
+      return true
+    } catch (error) {
+      console.error('Permission error:', error)
+      return false
+    }
+  }
+
+  const openCameraWithGuide = async () => {
+    const hasPermission = await getPermissions('camera')
+    if (hasPermission) {
+      setShowCamera(true)
+      setShowImageOptions(false)
+      setGuideColor("#FFD700")
+      setCountdown(null)
+    }
+  }
+
+  const startAutoCapture = () => {
+    cancelAutoCapture()
+    
+    setCountdown(5)
+    let count = 5
+    
+    const countdownInterval = setInterval(() => {
+      count -= 1
+      setCountdown(count)
+      
+      if (count === 3) {
+        setGuideColor("#FFA500") // Orange when 3 seconds left
+      }
+      if (count === 1) {
+        setGuideColor("#4CAF50") // Green when 1 second left
+      }
+      
+      if (count <= 0) {
+        clearInterval(countdownInterval)
+        setCountdown(0)
+      }
+    }, 1000)
+    
+    autoClickTimerRef.current = setTimeout(() => {
+      clearInterval(countdownInterval)
+      takePicture()
+    }, 5000)
+  }
+
+  const cancelAutoCapture = () => {
+    if (autoClickTimerRef.current) {
+      clearTimeout(autoClickTimerRef.current)
+      autoClickTimerRef.current = null
+    }
+    setCountdown(null)
+    setGuideColor("#FFD700")
+  }
+
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        cancelAutoCapture()
+        
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+        })
+        
+        console.log('Photo taken:', photo.uri)
+        
+        try {
+          const croppedPhoto = await cropImageToGuideBox(photo.uri)
+          setImageUri(croppedPhoto)
+          setShowCamera(false)
+          setResult(null)
+          
+          setTimeout(() => {
+            sendToBackend({ uri: croppedPhoto })
+          }, 300)
+        } catch (cropError) {
+          console.log('Crop failed, using original image:', cropError)
+          setImageUri(photo.uri)
+          setShowCamera(false)
+          setResult(null)
+          
+          setTimeout(() => {
+            sendToBackend({ uri: photo.uri })
+          }, 300)
+        }
+      } catch (error) {
+        console.error('Error taking picture:', error)
+        Alert.alert('Error', 'Failed to take photo. Please try again.')
+      }
+    }
+  }
+
+const cropImageToGuideBox = async (imageUri) => {
+    try {
+      // iOS aur Android dono ke liye dynamic cropping
+      const Image = require('react-native').Image;
+      
+      // Pehle image size check karo
+      const getImageSize = () => new Promise((resolve, reject) => {
+        Image.getSize(
+          imageUri,
+          (width, height) => resolve({ width, height }),
+          (error) => reject(error)
+        );
+      });
+      
+      const { width: imgWidth, height: imgHeight } = await getImageSize();
+      console.log('Original image size:', imgWidth, imgHeight);
+      
+      // Guide box screen ke center mein hai (280x280)
+      // Calculate crop based on aspect ratio
+      const screenWidth = width;
+      const guideBoxSize = 280;
+      const guideBoxRatio = guideBoxSize / screenWidth;
+      
+      // Image mein guide box ka actual size
+      const cropSize = Math.min(imgWidth, imgHeight) * guideBoxRatio;
+      
+      // Center se crop karo
+      const originX = (imgWidth - cropSize) / 2;
+      const originY = (imgHeight - cropSize) / 2;
+      
+      console.log('Crop parameters:', { originX, originY, cropSize });
+      
+      const croppedImage = await manipulateAsync(
+        imageUri,
+        [
+          {
+            crop: {
+              originX: Math.max(0, originX),
+              originY: Math.max(0, originY),
+              width: cropSize,
+              height: cropSize,
+            },
+          },
+          {
+            resize: {
+              width: 512,
+              height: 512,
+            },
+          },
+        ],
+        { compress: 0.8, format: SaveFormat.JPEG }
+      );
+      
+      console.log('Image cropped successfully:', croppedImage.uri);
+      return croppedImage.uri;
+    } catch (error) {
+      console.error('Crop error:', error);
+      throw error;
+    }
+  }
+
+  const toggleCameraFacing = () => {
+    setCameraFacing(current => (current === "back" ? "front" : "back"))
+    cancelAutoCapture()
+    startAutoCapture()
+  }
+
   const pickPhoto = async (fromCamera = false) => {
-    const permission = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync()
+    try {
+      if (fromCamera) {
+        await openCameraWithGuide()
+        return
+      }
 
-    if (permission.status !== "granted") {
-      Alert.alert("Permission needed", "Please allow permissions to continue!")
+      const hasPermission = await getPermissions('gallery')
+      if (!hasPermission) {
+        setShowImageOptions(false)
+        return
+      }
+
+      const options = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: false,
+        exif: false,
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync(options)
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0]
+        setImageUri(asset.uri)
+        setResult(null)
+        setShowImageOptions(false)
+        
+        setTimeout(() => {
+          sendToBackend(asset)
+        }, 300)
+      } else {
+        setShowImageOptions(false)
+      }
+    } catch (error) {
+      console.error('Image picker error:', error)
+      setShowImageOptions(false)
+      Alert.alert('Error', 'Failed to select image. Please try again.')
+    }
+  }
+
+  const sendToBackend = async (asset) => {
+    if (!asset && !imageUri) {
+      Alert.alert("Error", "Please select a photo first!")
       return
     }
 
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 1,
-        })
-      : await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 1,
-        })
-
-   if (!result.canceled) {
-    const asset = result.assets[0]
-    setImageUri(asset.uri)
-    setResult(null) // Clear old result
-    setShowImageOptions(false) // ✅ Modal close kar do
-    sendToBackend(asset) // Auto analyze
-  } else {
-    setShowImageOptions(false) // ✅ Cancel karne pe bhi modal close kar do
-  }
-  }
-
-  // ✅ Send to backend
-  const sendToBackend = async (asset) => {
-    if (!asset && !imageUri) return Alert.alert("Select a photo first!")
+    const imageSource = asset?.uri || imageUri
+    console.log('Sending to backend:', imageSource)
 
     setLoading(true)
-    const formData = new FormData()
-    formData.append("file", {
-      uri: asset?.uri || imageUri,
-      name: "tongue.jpg",
-      type: "image/jpeg",
-    })
-
+    
     try {
+      const formData = new FormData()
+      const uriParts = imageSource.split('.')
+      const fileType = uriParts[uriParts.length - 1].toLowerCase()
+      const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg'
+      
+      formData.append('file', {
+        uri: imageSource,
+        name: `tongue_${Date.now()}.${fileType}`,
+        type: mimeType,
+      })
+
       const response = await fetch(`${BASE_URL}/api/tongue-disease`, {
-        method: "POST",
+        method: 'POST',
         body: formData,
         headers: {
-          "Content-Type": "multipart/form-data",
+          'Accept': 'application/json',
         },
       })
 
-      const data = await response.json()
-      console.log("✅ Tongue analysis result:", data)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
 
-      if (response.ok && data) {
+      const data = await response.json()
+      console.log('API Response:', data)
+
+      if (data) {
         setResult(data)
       } else {
-        Alert.alert("Error", data.error || "Something went wrong!")
-        setResult({ error: "Analysis failed. Please try again." })
+        throw new Error('Empty response from server')
       }
+
     } catch (error) {
-      console.error("Tongue analysis error:", error)
-      Alert.alert("Error", "Network error, please try again.")
-      setResult({ error: "Network error. Please check your connection." })
+      console.error('API Error:', error)
+      Alert.alert('Analysis Failed', 'Unable to analyze image. Please try again.')
+      setResult({ error: 'Analysis failed' })
     } finally {
       setLoading(false)
     }
   }
 
-  // ✅ Enhanced result rendering with better formatting
   const renderValue = (value, key) => {
     if (value === null || value === undefined) return null
-
-    // Skip raw_scores from display
     if (key === 'raw_scores') return null
 
-    // Handle diseases array specially
     if (key === 'diseases' && Array.isArray(value)) {
       return (
         <View key={key} style={styles.diseaseSection}>
@@ -165,7 +428,6 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
       )
     }
 
-    // Handle other arrays
     if (Array.isArray(value)) {
       return (
         <View key={key} style={{ marginTop: 12 }}>
@@ -180,7 +442,6 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
       )
     }
 
-    // Handle objects
     if (typeof value === "object") {
       return (
         <View key={key} style={{ marginTop: 12 }}>
@@ -200,7 +461,6 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
       )
     }
 
-    // Handle simple values
     return (
       <View key={key} style={{ marginTop: 12 }}>
         <Text style={styles.resultSectionTitle}>{key.replace(/_/g, ' ').toUpperCase()}:</Text>
@@ -239,10 +499,18 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
     )
   }
 
+  if (!fontsLoaded) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#7475B4" />
+      </View>
+    )
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#7475B4" />
-      {/* Header */}
+      
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -255,7 +523,6 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Info Card */}
         <View style={styles.infoCard}>
           <View style={styles.infoHeader}>
             <Ionicons name="information-circle" size={24} color="#7475B4" />
@@ -268,7 +535,6 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
           </Text>
         </View>
 
-        {/* Upload Section */}
         {!imageUri ? (
           <View style={styles.uploadSection}>
             <View style={styles.uploadIconContainer}>
@@ -276,7 +542,7 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
             </View>
             <Text style={styles.uploadTitle}>Upload Your Tongue Photo</Text>
             <Text style={styles.uploadSubtitle}>
-              Take a clear photo of your tongue or choose from gallery
+              Photo will be automatically captured after 5 seconds
             </Text>
 
             <TouchableOpacity
@@ -312,7 +578,6 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Loading */}
         {loading && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#7475B4" />
@@ -323,10 +588,8 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Result */}
         {renderResult()}
 
-        {/* Tips Section */}
         <View style={styles.tipsCard}>
           <View style={styles.tipsHeader}>
             <Ionicons name="bulb" size={24} color="#FF9800" />
@@ -343,17 +606,116 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
             </View>
             <View style={styles.tipItem}>
               <Ionicons name="checkmark-circle" size={16} color="#7475B4" />
-              <Text style={styles.tipText}>Show your entire tongue clearly in the frame</Text>
+              <Text style={styles.tipText}>Photo will be captured automatically after 5 seconds</Text>
             </View>
             <View style={styles.tipItem}>
               <Ionicons name="checkmark-circle" size={16} color="#7475B4" />
-              <Text style={styles.tipText}>Avoid shadows and reflections</Text>
+              <Text style={styles.tipText}>Position your tongue inside the guide box</Text>
             </View>
           </View>
         </View>
       </ScrollView>
 
-      {/* Modal */}
+      {/* Camera Modal with Guide Overlay */}
+      <Modal
+        visible={showCamera}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => {
+          cancelAutoCapture()
+          setShowCamera(false)
+        }}
+      >
+        <View style={styles.cameraContainer}>
+          {permission?.granted && (
+            <CameraView
+              ref={cameraRef}
+              style={styles.camera}
+              facing={cameraFacing}
+            >
+              {/* Guide Overlay */}
+              <View style={styles.guideOverlay}>
+                <View style={styles.darkArea} />
+                
+                <View style={styles.middleRow}>
+                  <View style={styles.darkAreaSide} />
+                  
+                  <Animated.View 
+                    style={[
+                      styles.guideBox,
+                      {
+                        borderColor: guideColor,
+                        transform: [{ scale: pulseAnim }]
+                      }
+                    ]}
+                  >
+                    <View style={[styles.corner, styles.topLeft, { borderColor: guideColor }]} />
+                    <View style={[styles.corner, styles.topRight, { borderColor: guideColor }]} />
+                    <View style={[styles.corner, styles.bottomLeft, { borderColor: guideColor }]} />
+                    <View style={[styles.corner, styles.bottomRight, { borderColor: guideColor }]} />
+                    
+                    <View style={styles.instructionContainer}>
+                      <Ionicons 
+                        name="scan-outline" 
+                        size={40} 
+                        color={guideColor} 
+                      />
+                      <Text style={[styles.instructionText, { color: guideColor }]}>
+                        Position tongue inside the frame
+                      </Text>
+                      
+                      {countdown !== null && countdown > 0 && (
+                        <View style={styles.countdownCircle}>
+                          <Text style={styles.countdownText}>{countdown}</Text>
+                        </View>
+                      )}
+                      
+                      {countdown === 0 && (
+                        <Text style={[styles.instructionText, { color: "#4CAF50", marginTop: 15 }]}>
+                          Capturing...
+                        </Text>
+                      )}
+                    </View>
+                  </Animated.View>
+                  
+                  <View style={styles.darkAreaSide} />
+                </View>
+                
+                <View style={styles.darkArea} />
+              </View>
+
+              <View style={styles.cameraControls}>
+                <TouchableOpacity
+                  style={styles.closeCamera}
+                  onPress={() => {
+                    cancelAutoCapture()
+                    setShowCamera(false)
+                  }}
+                >
+                  <Ionicons name="close" size={32} color="#fff" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.captureButton}
+                  onPress={takePicture}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.captureButtonInner} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.flipCamera}
+                  onPress={toggleCameraFacing}
+                >
+                  <Ionicons name="camera-reverse" size={32} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </CameraView>
+          )}
+        </View>
+      </Modal>
+
+      {/* Image Options Modal */}
       <Modal
         visible={showImageOptions}
         transparent={true}
@@ -380,7 +742,7 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
               <View style={styles.optionText}>
                 <Text style={styles.optionTitle}>Take Photo</Text>
                 <Text style={styles.optionSubtitle}>
-                  Use camera to capture tongue photo
+                  Auto-capture after 5 seconds
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -435,7 +797,6 @@ const styles = StyleSheet.create({
     fontSize: 18, 
     fontWeight: "600", 
     color: "#fff",
-    fontFamily: "Poppins_600SemiBold",
   },
   placeholder: { width: 40 },
   content: {
@@ -466,13 +827,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#7475B4",
     marginLeft: 10,
-    fontFamily: "Poppins_600SemiBold",
   },
   infoText: {
     fontSize: 14,
     color: "#666",
     lineHeight: 20,
-    fontFamily: "Poppins_400Regular",
   },
   uploadSection: {
     backgroundColor: "#fff",
@@ -505,7 +864,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
     marginBottom: 8,
-    fontFamily: "Poppins_600SemiBold",
   },
   uploadSubtitle: {
     fontSize: 15,
@@ -513,7 +871,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 25,
     lineHeight: 20,
-    fontFamily: "Poppins_400Regular",
   },
   uploadButton: {
     borderRadius: 15,
@@ -536,7 +893,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginLeft: 8,
-    fontFamily: "Poppins_600SemiBold",
   },
   imageSection: {
     marginBottom: 25,
@@ -546,7 +902,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
     marginBottom: 15,
-    fontFamily: "Poppins_600SemiBold",
   },
   imageContainer: {
     backgroundColor: "#fff",
@@ -580,7 +935,6 @@ const styles = StyleSheet.create({
     color: "#7475B4",
     fontWeight: "600",
     marginLeft: 5,
-    fontFamily: "Poppins_600SemiBold",
   },
   loadingContainer: {
     backgroundColor: "#fff",
@@ -601,13 +955,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
     marginTop: 15,
-    fontFamily: "Poppins_600SemiBold",
   },
   loadingSubtext: {
     fontSize: 14,
     color: "#666",
     marginTop: 5,
-    fontFamily: "Poppins_400Regular",
   },
   resultCard: {
     backgroundColor: "#fff",
@@ -632,7 +984,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#333",
     marginLeft: 12,
-    fontFamily: "Poppins_700Bold",
   },
   resultContent: {
     borderRadius: 12,
@@ -648,14 +999,12 @@ const styles = StyleSheet.create({
     color: "#7475B4",
     marginBottom: 8,
     marginTop: 8,
-    fontFamily: "Poppins_700Bold",
   },
   resultDetailText: {
     fontSize: 14,
     color: "#333",
     lineHeight: 20,
     flex: 1,
-    fontFamily: "Poppins_400Regular",
   },
   bulletRow: {
     flexDirection: "row",
@@ -663,7 +1012,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 4,
   },
-  // New styles for enhanced disease display
   diseaseSection: {
     marginTop: 8,
   },
@@ -690,7 +1038,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginLeft: 8,
     flex: 1,
-    fontFamily: "Poppins_700Bold",
   },
   remediesSection: {
     marginTop: 8,
@@ -703,7 +1050,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#555",
     marginBottom: 8,
-    fontFamily: "Poppins_600SemiBold",
   },
   remedyItem: {
     flexDirection: "row",
@@ -716,7 +1062,6 @@ const styles = StyleSheet.create({
     color: "#333",
     lineHeight: 20,
     flex: 1,
-    fontFamily: "Poppins_400Regular",
   },
   disclaimerBox: {
     flexDirection: "row",
@@ -735,7 +1080,6 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     flex: 1,
     fontStyle: "italic",
-    fontFamily: "Poppins_400Regular",
   },
   newAnalysisButton: {
     flexDirection: "row",
@@ -753,7 +1097,6 @@ const styles = StyleSheet.create({
     color: "#7475B4",
     fontWeight: "600",
     marginLeft: 8,
-    fontFamily: "Poppins_600SemiBold",
   },
   tipsCard: {
     backgroundColor: "#fff",
@@ -778,7 +1121,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
     marginLeft: 10,
-    fontFamily: "Poppins_600SemiBold",
   },
   tipsList: {
     marginLeft: 10,
@@ -793,7 +1135,164 @@ const styles = StyleSheet.create({
     color: "#666",
     marginLeft: 10,
     flex: 1,
-    fontFamily: "Poppins_400Regular",
+  },
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  camera: {
+    flex: 1,
+  },
+  guideOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  darkArea: {
+    flex: 1,
+    width: "100%",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+  },
+  middleRow: {
+    flexDirection: "row",
+    width: "100%",
+  },
+  darkAreaSide: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+  },
+  guideBox: {
+    width: 280,
+    height: 280,
+    borderWidth: 4,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "transparent",
+  },
+  corner: {
+    position: "absolute",
+    width: 40,
+    height: 40,
+    borderWidth: 5,
+  },
+  topLeft: {
+    top: -2,
+    left: -2,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 20,
+  },
+  topRight: {
+    top: -2,
+    right: -2,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+    borderTopRightRadius: 20,
+  },
+  bottomLeft: {
+    bottom: -2,
+    left: -2,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 20,
+  },
+  bottomRight: {
+    bottom: -2,
+    right: -2,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomRightRadius: 20,
+  },
+  instructionContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  instructionText: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 10,
+    textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  instructionSubtext: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginTop: 5,
+    textAlign: "center",
+    color: "#FFF",
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  countdownCircle: {
+    marginTop: 20,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(116, 117, 180, 0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 4,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  countdownText: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  cameraControls: {
+    position: "absolute",
+    bottom: 40,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    paddingHorizontal: 30,
+  },
+  closeCamera: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  flipCamera: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 5,
+    borderColor: "rgba(255, 255, 255, 0.5)",
+  },
+  captureButtonInner: {
+    width: 65,
+    height: 65,
+    borderRadius: 32.5,
+    backgroundColor: "#fff",
   },
   modalOverlay: {
     flex: 1,
@@ -818,7 +1317,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#333",
-    fontFamily: "Poppins_700Bold",
   },
   optionButton: {
     flexDirection: "row",
@@ -844,12 +1342,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
     marginBottom: 2,
-    fontFamily: "Poppins_600SemiBold",
   },
   optionSubtitle: {
     fontSize: 13,
     color: "#666",
-    fontFamily: "Poppins_400Regular",
   },
   modalNote: {
     flexDirection: "row",
@@ -864,7 +1360,6 @@ const styles = StyleSheet.create({
     color: "#4CAF50",
     marginLeft: 8,
     fontWeight: "500",
-    fontFamily: "Poppins_500Medium",
   },
 })
 

@@ -1,3 +1,4 @@
+// src/screens/MyAppointments.js
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -11,8 +12,8 @@ import {
   Image,
   SafeAreaView,
   StatusBar,
+  ScrollView,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { BASE_URL } from "../../config/config";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,20 +21,49 @@ import { Ionicons } from "@expo/vector-icons";
 export default function MyAppointments({ navigation }) {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [userEmail, setUserEmail] = useState(null);
+  const [authToken, setAuthToken] = useState(null);
   const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState("");
   const [availableSlots, setAvailableSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [dates, setDates] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
 
   const auth = getAuth();
 
+  // Generate next 14 days for calendar
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user?.email) setUserEmail(user.email);
-      else {
-        setUserEmail(null);
+    const generateDates = () => {
+      const dateList = [];
+      for (let i = 0; i < 14; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() + i);
+        dateList.push({
+          date: date.toISOString().split("T")[0],
+          day: date.toLocaleDateString("en-US", { weekday: "short" }),
+          dayNum: date.getDate(),
+          month: date.toLocaleDateString("en-US", { month: "short" }),
+        });
+      }
+      setDates(dateList);
+    };
+    generateDates();
+  }, []);
+
+  // ✅ Get Firebase Auth Token
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const token = await user.getIdToken();
+          setAuthToken(token);
+        } catch (error) {
+          console.error("Error getting token:", error);
+          setAuthToken(null);
+        }
+      } else {
+        setAuthToken(null);
         setAppointments([]);
         setLoading(false);
       }
@@ -41,11 +71,16 @@ export default function MyAppointments({ navigation }) {
     return () => unsubscribe();
   }, []);
 
+  // ✅ Fetch appointments using auth token (backend uses req.user.uid)
   const fetchAppointments = async () => {
-    if (!userEmail) return;
+    if (!authToken) return;
     setLoading(true);
     try {
-      const response = await fetch(`${BASE_URL}/api/bookings?email=${userEmail}`);
+      const response = await fetch(`${BASE_URL}/api/bookings`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
       if (!response.ok) throw new Error("Failed to fetch appointments");
       const data = await response.json();
       setAppointments(data);
@@ -59,76 +94,137 @@ export default function MyAppointments({ navigation }) {
 
   useEffect(() => {
     fetchAppointments();
-  }, [userEmail]);
+  }, [authToken]);
 
   const handleCancel = async (bookingId) => {
-    try {
-      const response = await fetch(`${BASE_URL}/api/bookings/${bookingId}`, {
-        method: "DELETE",
-      });
-      const data = await response.json();
-      if (response.ok) {
-        Alert.alert("Success", data.message);
-        fetchAppointments();
-      } else {
-        Alert.alert("Error", data.message || "Failed to cancel appointment");
-      }
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Something went wrong");
-    }
+    Alert.alert(
+      "Cancel Appointment",
+      "Are you sure you want to cancel this appointment?",
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await fetch(`${BASE_URL}/api/bookings/${bookingId}`, {
+                method: "DELETE",
+                headers: {
+                  Authorization: `Bearer ${authToken}`,
+                },
+              });
+              const data = await response.json();
+              if (response.ok) {
+                Alert.alert("Success", data.message);
+                setRescheduleModalVisible(false);
+                fetchAppointments();
+              } else {
+                Alert.alert("Error", data.message || "Failed to cancel appointment");
+              }
+            } catch (err) {
+              console.error(err);
+              Alert.alert("Error", "Something went wrong");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const openRescheduleModal = async (appointment) => {
     setSelectedAppointment(appointment);
-    setSelectedSlot(appointment.slot);
+    setSelectedSlot("");
     setAvailableSlots([]);
-    setLoadingSlots(true);
+    
+    const appointmentDate = appointment.date 
+      ? new Date(appointment.date).toISOString().split("T")[0]
+      : new Date().toISOString().split("T")[0];
+    setSelectedDate(appointmentDate);
 
-    if (!appointment.doctorId?._id) {
+    setRescheduleModalVisible(true);
+    
+    if (appointment.doctorId?._id) {
+      fetchSlotsForDate(appointment.doctorId._id, appointmentDate);
+    } else {
       Alert.alert("Error", "Doctor ID missing for this appointment");
-      setLoadingSlots(false);
-      return;
     }
+  };
 
+  const fetchSlotsForDate = async (doctorId, date) => {
+    setLoadingSlots(true);
+    setAvailableSlots([]);
+    
     try {
       const response = await fetch(
-        `${BASE_URL}/api/doctors/${appointment.doctorId._id}/slots?date=${appointment.appointmentDate}`
+        `${BASE_URL}/api/doctors/${doctorId}/slots?date=${date}`
       );
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
       const data = await response.json();
       setAvailableSlots(data.availableSlots || []);
+      
+      if (data.availableSlots?.length === 0) {
+        Alert.alert("Info", "No slots available for this date");
+      }
     } catch (err) {
       console.error("Error fetching slots:", err);
-      Alert.alert("Error", "Failed to fetch available slots");
+      Alert.alert("Error", "Failed to fetch available slots. Please try another date.");
       setAvailableSlots([]);
     } finally {
       setLoadingSlots(false);
-      setRescheduleModalVisible(true);
+    }
+  };
+
+  const handleDateSelect = (date) => {
+    setSelectedDate(date);
+    setSelectedSlot("");
+    if (selectedAppointment?.doctorId?._id) {
+      fetchSlotsForDate(selectedAppointment.doctorId._id, date);
     }
   };
 
   const handleReschedule = async () => {
-    if (!selectedAppointment || !selectedSlot) return;
+    if (!selectedAppointment || !selectedSlot || !selectedDate) {
+      Alert.alert("Error", "Please select a date and time slot");
+      return;
+    }
+
     try {
+      const [startTime, endTime] = selectedSlot.split("-");
+
       const response = await fetch(
         `${BASE_URL}/api/bookings/${selectedAppointment._id}/reschedule`,
         {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
           body: JSON.stringify({
-            newSlot: selectedSlot,
-            newDate: selectedAppointment.appointmentDate,
+            newDate: selectedDate,
+            newStartTime: startTime,
+            newEndTime: endTime,
           }),
         }
       );
+      
       const data = await response.json();
       if (response.ok) {
-        Alert.alert("Success", "Appointment rescheduled!");
-        setRescheduleModalVisible(false);
-        setSelectedAppointment(null);
-        setSelectedSlot("");
-        fetchAppointments();
+        Alert.alert("Success", "Appointment rescheduled successfully!", [
+          {
+            text: "OK",
+            onPress: () => {
+              setRescheduleModalVisible(false);
+              setSelectedAppointment(null);
+              setSelectedSlot("");
+              setSelectedDate(null);
+              fetchAppointments();
+            },
+          },
+        ]);
       } else {
         Alert.alert("Error", data.message || "Failed to reschedule appointment");
       }
@@ -136,6 +232,24 @@ export default function MyAppointments({ navigation }) {
       console.error(err);
       Alert.alert("Error", "Something went wrong");
     }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", { 
+      day: "2-digit", 
+      month: "short" 
+    });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return "N/A";
+    const [hours, minutes] = timeString.split(":");
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
   };
 
   if (loading) {
@@ -155,14 +269,18 @@ export default function MyAppointments({ navigation }) {
       <SafeAreaView style={styles.container}>
         <StatusBar backgroundColor="#ffffff" barStyle="dark-content" />
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton}>
-            <Text style={styles.backArrow}>‹</Text>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>My Appointments</Text>
           <View style={styles.headerSpace} />
         </View>
         <View style={styles.separator} />
         <View style={styles.emptyContainer}>
+          <Ionicons name="calendar-outline" size={64} color="#ccc" />
           <Text style={styles.noDataText}>No appointments booked yet.</Text>
         </View>
       </SafeAreaView>
@@ -173,8 +291,7 @@ export default function MyAppointments({ navigation }) {
     <SafeAreaView style={styles.container}>
       <StatusBar backgroundColor="#ffffff" barStyle="dark-content" />
       
-      {/* Header */}
-     <View style={styles.header}>
+      <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -185,11 +302,8 @@ export default function MyAppointments({ navigation }) {
         <View style={styles.placeholder} />
       </View>
 
-      
-      {/* Gray separator line */}
       <View style={styles.separator} />
 
-      {/* Content */}
       <View style={styles.content}>
         <Text style={styles.upcomingText}>Upcoming</Text>
 
@@ -199,56 +313,60 @@ export default function MyAppointments({ navigation }) {
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <View style={styles.appointmentCard}>
-              {/* Teal top section */}
               <View style={styles.cardTop}>
                 <View style={styles.leftInfo}>
-                 <Image
-  source={
-    item.doctorId?.profilePicture
-      ? { uri: item.doctorId.profilePicture }
-      : require("../../../assets/doctor.png")
-  }
-  style={styles.doctorPhoto}
-/>
+                  <Image
+                    source={
+                      item.doctorId?.profilePicture
+                        ? { uri: item.doctorId.profilePicture }
+                        : require("../../../assets/doctor.png")
+                    }
+                    style={styles.doctorPhoto}
+                  />
                   <View style={styles.doctorInfo}>
                     <Text style={styles.doctorName}>
-                      {item.doctorId?.name || "Dr. Mehra"}
+                      {item.doctorId?.name || "Doctor"}
                     </Text>
                     <Text style={styles.doctorSpecialty}>
-                      {item.doctorId?.specialization || "Dermatologist"}
+                      {item.doctorId?.specialization || "Specialist"}
                     </Text>
                   </View>
                 </View>
                 
                 <View style={styles.rightInfo}>
                   <Text style={styles.dateText}>
-                    {item.appointmentDate || "04 Sep"}
+                    {formatDate(item.date)}
                   </Text>
                   <Text style={styles.timeText}>
-                    {item.slot || "10:00 am"}
+                    {formatTime(item.startTime)}
                   </Text>
                 </View>
               </View>
 
-              {/* White bottom section */}
               <View style={styles.cardBottom}>
                 <View style={styles.patientInfo}>
                   <Text style={styles.infoLine}>
                     <Text style={styles.infoLabel}>Patient: </Text>
                     <Text style={styles.infoValue}>
-                      {item.patientName || "Kaushal"}
+                      {item.patientName || "N/A"}
+                    </Text>
+                  </Text>
+                  <Text style={styles.infoLine}>
+                    <Text style={styles.infoLabel}>Email: </Text>
+                    <Text style={styles.infoValue}>
+                      {item.patientEmail || "N/A"}
                     </Text>
                   </Text>
                   <Text style={styles.infoLine}>
                     <Text style={styles.infoLabel}>Hospital: </Text>
                     <Text style={styles.infoValue}>
-                      {item.hospitalName || "Namo"}
+                      {item.hospitalName || "N/A"}
                     </Text>
                   </Text>
                   <Text style={styles.infoLine}>
                     <Text style={styles.infoLabel}>Cost: </Text>
                     <Text style={styles.infoValue}>
-                      ${item.fees || "250"}
+                      ₹{item.fees || "0"}
                     </Text>
                   </Text>
                 </View>
@@ -257,6 +375,7 @@ export default function MyAppointments({ navigation }) {
                   style={styles.editButton}
                   onPress={() => openRescheduleModal(item)}
                 >
+                  <Ionicons name="create-outline" size={20} color="#5DBAAE" />
                   <Text style={styles.editText}>Edit</Text>
                 </TouchableOpacity>
               </View>
@@ -265,7 +384,7 @@ export default function MyAppointments({ navigation }) {
         />
       </View>
 
-      {/* Modal */}
+      {/* Reschedule Modal */}
       <Modal
         visible={rescheduleModalVisible}
         animationType="slide"
@@ -274,32 +393,117 @@ export default function MyAppointments({ navigation }) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reschedule Appointment</Text>
-
-            {loadingSlots ? (
-              <ActivityIndicator size="large" color="#5DBAAE" />
-            ) : (
-              <Picker
-                selectedValue={selectedSlot}
-                onValueChange={(value) => setSelectedSlot(value)}
-                style={styles.picker}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Reschedule Appointment</Text>
+              <TouchableOpacity 
+                onPress={() => setRescheduleModalVisible(false)}
+                style={styles.closeIcon}
               >
-                {availableSlots.length > 0 ? (
-                  availableSlots.map((slot, index) => (
-                    <Picker.Item key={index} label={slot} value={slot} />
-                  ))
-                ) : (
-                  <Picker.Item label="No slots available" value="" />
-                )}
-              </Picker>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {selectedAppointment && (
+              <View style={styles.currentInfo}>
+                <Text style={styles.currentLabel}>Current Appointment:</Text>
+                <Text style={styles.currentValue}>
+                  {formatDate(selectedAppointment.date)} at {formatTime(selectedAppointment.startTime)}
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.sectionLabel}>Select New Date</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.dateScroll}
+            >
+              {dates.map((item) => (
+                <TouchableOpacity
+                  key={item.date}
+                  style={[
+                    styles.dateBox,
+                    selectedDate === item.date && styles.dateBoxSelected,
+                  ]}
+                  onPress={() => handleDateSelect(item.date)}
+                >
+                  <Text
+                    style={[
+                      styles.dateDay,
+                      selectedDate === item.date && styles.dateDaySelected,
+                    ]}
+                  >
+                    {item.day}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateNum,
+                      selectedDate === item.date && styles.dateNumSelected,
+                    ]}
+                  >
+                    {item.dayNum}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateMonth,
+                      selectedDate === item.date && styles.dateMonthSelected,
+                    ]}
+                  >
+                    {item.month}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Select New Time Slot</Text>
+            {loadingSlots ? (
+              <ActivityIndicator size="large" color="#5DBAAE" style={{ marginVertical: 20 }} />
+            ) : availableSlots.length > 0 ? (
+              <ScrollView style={styles.slotsContainer} showsVerticalScrollIndicator={false}>
+                <View style={styles.slotsGrid}>
+                  {availableSlots.map((slot, index) => {
+                    const [start] = slot.split("-");
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.slotBox,
+                          selectedSlot === slot && styles.slotBoxSelected,
+                        ]}
+                        onPress={() => setSelectedSlot(slot)}
+                      >
+                        <Text
+                          style={[
+                            styles.slotText,
+                            selectedSlot === slot && styles.slotTextSelected,
+                          ]}
+                        >
+                          {formatTime(start)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            ) : (
+              <View style={styles.noSlotsContainer}>
+                <Ionicons name="time-outline" size={32} color="#ccc" />
+                <Text style={styles.noSlotsText}>No slots available for selected date</Text>
+              </View>
             )}
 
             <TouchableOpacity
-              style={styles.modalButton}
+              style={[
+                styles.modalButton, 
+                styles.updateBtn,
+                (!selectedSlot || loadingSlots) && styles.buttonDisabled
+              ]}
               onPress={handleReschedule}
-              disabled={loadingSlots || availableSlots.length === 0}
+              disabled={loadingSlots || !selectedSlot}
             >
-              <Text style={styles.buttonText}>Update Slot</Text>
+              <Text style={styles.buttonText}>
+                {loadingSlots ? "Loading..." : "Update Appointment"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -307,13 +511,6 @@ export default function MyAppointments({ navigation }) {
               onPress={() => handleCancel(selectedAppointment?._id)}
             >
               <Text style={styles.buttonText}>Cancel Appointment</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setRescheduleModalVisible(false)}
-              style={[styles.modalButton, styles.closeBtn]}
-            >
-              <Text style={styles.buttonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -327,8 +524,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#ffffff",
   },
-  
-  // Header with back arrow and title
   header: {
     marginTop: StatusBar.currentHeight || 0,
     flexDirection: "row",
@@ -340,31 +535,24 @@ const styles = StyleSheet.create({
   backButton: {
     marginRight: 12,
   },
-  backArrow: {
-    fontSize: 24,
-    color: "#000000",
-    fontWeight: "400",
-  },
   headerTitle: {
     fontSize: 20,
     fontWeight: "600",
     color: "#000000",
     flex: 1,
     textAlign: "center",
-    marginRight: 36, // Balance for back arrow
+    marginRight: 36,
   },
   headerSpace: {
     width: 36,
   },
-  
-  // Gray line separator
+  placeholder: {
+    width: 24,
+  },
   separator: {
     height: 1,
     backgroundColor: "#E5E5E5",
-    marginHorizontal: 0,
   },
-
-  // Content area
   content: {
     flex: 1,
     backgroundColor: "#F5F5F5",
@@ -377,8 +565,6 @@ const styles = StyleSheet.create({
     color: "#000000",
     marginBottom: 20,
   },
-
-  // Appointment card
   appointmentCard: {
     backgroundColor: "#ffffff",
     borderRadius: 12,
@@ -390,8 +576,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-
-  // Teal header section
   cardTop: {
     backgroundColor: "#39A6A3",
     paddingHorizontal: 20,
@@ -438,8 +622,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "rgba(255, 255, 255, 0.9)",
   },
-
-  // White bottom section
   cardBottom: {
     backgroundColor: "#ffffff",
     paddingHorizontal: 20,
@@ -464,17 +646,18 @@ const styles = StyleSheet.create({
     color: "#000000",
   },
   editButton: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "transparent",
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   editText: {
     fontSize: 16,
-    color: "#666666",
-    fontWeight: "400",
+    color: "#5DBAAE",
+    fontWeight: "500",
+    marginLeft: 4,
   },
-
-  // Loading states
   loader: {
     flex: 1,
     justifyContent: "center",
@@ -493,9 +676,8 @@ const styles = StyleSheet.create({
   noDataText: {
     fontSize: 16,
     color: "#666666",
+    marginTop: 16,
   },
-
-  // Modal styles
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
@@ -504,34 +686,149 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: "90%",
+    maxHeight: "85%",
     backgroundColor: "#ffffff",
     padding: 24,
-    borderRadius: 12,
+    borderRadius: 16,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "600",
-    marginBottom: 20,
-    textAlign: "center",
+    color: "#000",
   },
-  picker: {
+  closeIcon: {
+    padding: 4,
+  },
+  currentInfo: {
+    backgroundColor: "#F0F9FF",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: "#5DBAAE",
+  },
+  currentLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 4,
+  },
+  currentValue: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
+    marginBottom: 12,
+  },
+  dateScroll: {
+    marginBottom: 10,
+  },
+  dateBox: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    marginRight: 10,
+    alignItems: "center",
+    minWidth: 60,
+    backgroundColor: "#fafafa",
+  },
+  dateBoxSelected: {
+    backgroundColor: "#5DBAAE",
+    borderColor: "#5DBAAE",
+  },
+  dateDay: {
+    fontSize: 12,
+    color: "#666",
+    fontWeight: "500",
+  },
+  dateDaySelected: {
+    color: "#fff",
+  },
+  dateNum: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#111",
+    marginTop: 4,
+  },
+  dateNumSelected: {
+    color: "#fff",
+  },
+  dateMonth: {
+    fontSize: 10,
+    color: "#999",
+    marginTop: 2,
+  },
+  dateMonthSelected: {
+    color: "#fff",
+  },
+  slotsContainer: {
+    maxHeight: 200,
     marginBottom: 20,
+  },
+  slotsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  slotBox: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    margin: 6,
+    backgroundColor: "#fafafa",
+  },
+  slotBoxSelected: {
+    backgroundColor: "#5DBAAE",
+    borderColor: "#5DBAAE",
+  },
+  slotText: {
+    fontSize: 14,
+    color: "#111",
+  },
+  slotTextSelected: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  noSlotsContainer: {
+    alignItems: "center",
+    paddingVertical: 30,
+  },
+  noSlotsText: {
+    fontSize: 14,
+    color: "#999",
+    textAlign: "center",
+    marginTop: 12,
   },
   modalButton: {
-    backgroundColor: "#5DBAAE",
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
     marginBottom: 12,
+    alignItems: "center",
+  },
+  updateBtn: {
+    backgroundColor: "#5DBAAE",
   },
   cancelBtn: {
     backgroundColor: "#dc3545",
   },
-  closeBtn: {
-    backgroundColor: "#6c757d",
+  buttonDisabled: {
+    backgroundColor: "#ccc",
+    opacity: 0.6,
   },
   buttonText: {
     color: "#ffffff",
-    textAlign: "center",
     fontSize: 16,
     fontWeight: "600",
   },

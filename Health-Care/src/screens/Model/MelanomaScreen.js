@@ -88,7 +88,7 @@ export default function MelanomaScreen() {
       setResult("Connecting to server...");
       setIsProcessing(true);
       
-      wsRef.current = new WebSocket("ws://192.168.1.12:8080");
+      wsRef.current = new WebSocket("ws://192.168.1.16:8080");
 
       wsRef.current.onopen = () => {
         console.log("✅ Connected to Python server");

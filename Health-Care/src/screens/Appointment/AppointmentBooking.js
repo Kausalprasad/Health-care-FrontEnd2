@@ -8,9 +8,9 @@ import {
   Alert, 
   ActivityIndicator, 
   ScrollView,
-  SafeAreaView 
+  SafeAreaView,
+  Modal
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { BASE_URL } from "../../config/config";
 
 export default function AppointmentBooking() {
@@ -36,6 +36,79 @@ export default function AppointmentBooking() {
   const [selectedLocation, setSelectedLocation] = useState("");
   const [minRating, setMinRating] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+
+  // Dropdown states for iOS fix
+  const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
+  const [showSlotDropdown, setShowSlotDropdown] = useState(false);
+  const [showSpecDropdown, setShowSpecDropdown] = useState(false);
+  const [showLocDropdown, setShowLocDropdown] = useState(false);
+
+  // Custom Dropdown Component (iOS Compatible)
+  const CustomDropdown = ({ 
+    visible, 
+    onClose, 
+    options, 
+    selectedValue, 
+    onSelect, 
+    title,
+    renderItem 
+  }) => (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={styles.dropdownOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={styles.dropdownModal}>
+          <View style={styles.dropdownHeader}>
+            <Text style={styles.dropdownTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.dropdownClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.dropdownList}>
+            {options.map((option, index) => {
+              const value = typeof option === 'string' ? option : option.value;
+              const label = typeof option === 'string' ? option : (option.label || renderItem?.(option));
+              const isSelected = selectedValue === value;
+              
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.dropdownItem,
+                    isSelected && styles.dropdownItemSelected
+                  ]}
+                  onPress={() => {
+                    onSelect(value, option);
+                    onClose();
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownItemText,
+                      isSelected && styles.dropdownItemTextSelected
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {label}
+                  </Text>
+                  {isSelected && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
 
   // Calendar helper functions
   const getCalendarDates = () => {
@@ -104,15 +177,12 @@ export default function AppointmentBooking() {
   const selectDate = (dateString) => {
     setSelectedDate(dateString);
     setShowCalendar(false);
-    // Reset slot when date changes
     setSlot("");
-    // Fetch available slots for the selected date and doctor
     if (selectedDoctor) {
       fetchAvailableSlotsForDate(selectedDoctor, dateString);
     }
   };
 
-  // Fetch available slots for a specific date and doctor
   const fetchAvailableSlotsForDate = async (doctorId, date) => {
     try {
       const response = await fetch(`${BASE_URL}/api/doctors/${doctorId}/slots?date=${date}`);
@@ -121,30 +191,25 @@ export default function AppointmentBooking() {
       if (response.ok) {
         setAvailableSlots(data.availableSlots || []);
       } else {
-        // Fallback to default slots if API doesn't support date-specific slots
         const doctor = doctors.find(doc => doc._id === doctorId);
         setAvailableSlots(doctor?.availableSlots || []);
       }
     } catch (error) {
       console.error("Error fetching slots for date:", error);
-      // Fallback to default slots
       const doctor = doctors.find(doc => doc._id === doctorId);
       setAvailableSlots(doctor?.availableSlots || []);
     }
   };
 
-  // Fetch initial data
   useEffect(() => {
     fetchDoctors();
     fetchFilters();
   }, []);
 
-  // Fetch doctors with filters
   const fetchDoctors = async () => {
     try {
       setLoadingDoctors(true);
       
-      // Build query parameters
       let url = `${BASE_URL}/api/doctors`;
       const params = new URLSearchParams();
       
@@ -153,7 +218,6 @@ export default function AppointmentBooking() {
       if (selectedLocation) params.append('location', selectedLocation);
       if (minRating) params.append('rating', minRating);
       
-      // Use search endpoint if filters are applied, otherwise use regular endpoint
       if (params.toString()) {
         url = `${BASE_URL}/api/doctors/search/doctors?${params.toString()}`;
       }
@@ -161,14 +225,12 @@ export default function AppointmentBooking() {
       const response = await fetch(url);
       const data = await response.json();
       
-      // Handle both response formats (with/without success field)
       const doctorsData = data.doctors || data;
       setDoctors(Array.isArray(doctorsData) ? doctorsData : []);
       
       if (doctorsData?.length > 0) {
         setSelectedDoctor(doctorsData[0]._id);
         setDoctorDetails(doctorsData[0]);
-        // If date is selected, fetch slots for that date, otherwise use default slots
         if (selectedDate) {
           fetchAvailableSlotsForDate(doctorsData[0]._id, selectedDate);
         } else {
@@ -188,7 +250,6 @@ export default function AppointmentBooking() {
     }
   };
 
-  // Fetch specializations and locations for filters
   const fetchFilters = async () => {
     try {
       const [specRes, locRes] = await Promise.all([
@@ -203,19 +264,16 @@ export default function AppointmentBooking() {
       setLocations(locData.locations || []);
     } catch (err) {
       console.error("Fetch filters error:", err);
-      // Fallback to manual list if API fails
       setSpecializations(["Cardiology", "Dermatology", "Neurology", "Pediatrics", "Orthopedics"]);
       setLocations(["Delhi", "Gurgaon", "Noida", "Mumbai", "Bangalore"]);
     }
   };
 
-  // Update doctor details when selectedDoctor changes
   useEffect(() => {
     const doctor = doctors.find((doc) => doc._id === selectedDoctor);
     if (doctor) {
       setDoctorDetails(doctor);
       
-      // If date is selected, fetch slots for that date, otherwise use default slots
       if (selectedDate) {
         fetchAvailableSlotsForDate(doctor._id, selectedDate);
       } else {
@@ -235,7 +293,6 @@ export default function AppointmentBooking() {
     setSelectedLocation("");
     setMinRating("");
     setShowFilters(false);
-    // Fetch all doctors again
     setTimeout(() => fetchDoctors(), 100);
   };
 
@@ -266,8 +323,6 @@ export default function AppointmentBooking() {
         setPatientEmail("");
         setSlot("");
         setSelectedDate("");
-
-        // Update available slots
         setAvailableSlots(prevSlots => prevSlots.filter((s) => s !== slot));
       } else {
         Alert.alert("Error", data.message || "Failed to book appointment");
@@ -291,7 +346,6 @@ export default function AppointmentBooking() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.container}>
         
-        {/* Header */}
         <Text style={styles.heading}>Book an Appointment</Text>
 
         {/* Patient Information Card */}
@@ -316,7 +370,6 @@ export default function AppointmentBooking() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Find Doctor</Text>
           
-          {/* Search Bar */}
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
@@ -329,7 +382,6 @@ export default function AppointmentBooking() {
             </TouchableOpacity>
           </View>
 
-          {/* Filter Toggle */}
           <TouchableOpacity 
             style={styles.filterToggle} 
             onPress={() => setShowFilters(!showFilters)}
@@ -339,32 +391,29 @@ export default function AppointmentBooking() {
             </Text>
           </TouchableOpacity>
 
-          {/* Filters (Collapsible) */}
           {showFilters && (
             <View style={styles.filtersContainer}>
               <Text style={styles.filterLabel}>Specialization:</Text>
-              <Picker
-                selectedValue={selectedSpecialization}
-                onValueChange={setSelectedSpecialization}
-                style={styles.filterPicker}
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => setShowSpecDropdown(true)}
               >
-                <Picker.Item label="All Specializations" value="" />
-                {specializations.map((spec, idx) => (
-                  <Picker.Item key={idx} label={spec} value={spec} />
-                ))}
-              </Picker>
+                <Text style={styles.pickerButtonText}>
+                  {selectedSpecialization || "All Specializations"}
+                </Text>
+                <Text style={styles.pickerIcon}>▼</Text>
+              </TouchableOpacity>
 
               <Text style={styles.filterLabel}>Location:</Text>
-              <Picker
-                selectedValue={selectedLocation}
-                onValueChange={setSelectedLocation}
-                style={styles.filterPicker}
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => setShowLocDropdown(true)}
               >
-                <Picker.Item label="All Locations" value="" />
-                {locations.map((loc, idx) => (
-                  <Picker.Item key={idx} label={loc} value={loc} />
-                ))}
-              </Picker>
+                <Text style={styles.pickerButtonText}>
+                  {selectedLocation || "All Locations"}
+                </Text>
+                <Text style={styles.pickerIcon}>▼</Text>
+              </TouchableOpacity>
 
               <Text style={styles.filterLabel}>Minimum Rating:</Text>
               <TextInput
@@ -386,7 +435,6 @@ export default function AppointmentBooking() {
             </View>
           )}
 
-          {/* Results Count */}
           <Text style={styles.resultsText}>
             {doctors.length} doctor(s) found
           </Text>
@@ -396,21 +444,17 @@ export default function AppointmentBooking() {
         {doctors.length > 0 ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Select Doctor</Text>
-            <Picker
-              selectedValue={selectedDoctor}
-              onValueChange={setSelectedDoctor}
-              style={styles.picker}
+            
+            <TouchableOpacity
+              style={styles.pickerButton}
+              onPress={() => setShowDoctorDropdown(true)}
             >
-              {doctors.map((doc) => (
-                <Picker.Item
-                  key={doc._id}
-                  label={`${doc.name} - ${doc.specialization}`}
-                  value={doc._id}
-                />
-              ))}
-            </Picker>
+              <Text style={styles.pickerButtonText} numberOfLines={1}>
+                {doctorDetails ? `${doctorDetails.name} - ${doctorDetails.specialization}` : "Choose a doctor"}
+              </Text>
+              <Text style={styles.pickerIcon}>▼</Text>
+            </TouchableOpacity>
 
-            {/* Doctor Details Display */}
             {doctorDetails && (
               <View style={styles.doctorDetailsCard}>
                 <Text style={styles.doctorName}>{doctorDetails.name}</Text>
@@ -450,7 +494,6 @@ export default function AppointmentBooking() {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Select Appointment Date</Text>
             
-            {/* Date Selector Button */}
             <TouchableOpacity 
               style={styles.dateSelector}
               onPress={() => setShowCalendar(!showCalendar)}
@@ -463,10 +506,8 @@ export default function AppointmentBooking() {
               </Text>
             </TouchableOpacity>
 
-            {/* Calendar */}
             {showCalendar && (
               <View style={styles.calendarContainer}>
-                {/* Month Navigation */}
                 <View style={styles.monthHeader}>
                   <TouchableOpacity onPress={() => navigateMonth(-1)}>
                     <Text style={styles.navButton}>◀</Text>
@@ -479,14 +520,12 @@ export default function AppointmentBooking() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Week Days Header */}
                 <View style={styles.weekHeader}>
                   {weekDays.map((day) => (
                     <Text key={day} style={styles.weekDay}>{day}</Text>
                   ))}
                 </View>
 
-                {/* Calendar Grid */}
                 <View style={styles.calendarGrid}>
                   {getCalendarDates().map((dateObj, index) => (
                     <TouchableOpacity
@@ -526,20 +565,21 @@ export default function AppointmentBooking() {
               📅 {formatDisplayDate(selectedDate)}
             </Text>
             
-            <Picker
-              selectedValue={slot}
-              onValueChange={setSlot}
-              style={styles.picker}
+            <TouchableOpacity
+              style={styles.pickerButton}
+              onPress={() => availableSlots.length > 0 && setShowSlotDropdown(true)}
+              disabled={availableSlots.length === 0}
             >
-              <Picker.Item label="Choose a time slot" value="" />
-              {availableSlots.length > 0 ? (
-                availableSlots.map((s, idx) => (
-                  <Picker.Item key={idx} label={s} value={s} />
-                ))
-              ) : (
-                <Picker.Item label="No slots available" value="" />
+              <Text style={[
+                styles.pickerButtonText,
+                availableSlots.length === 0 && styles.disabledText
+              ]}>
+                {slot || (availableSlots.length > 0 ? "Choose a time slot" : "No slots available")}
+              </Text>
+              {availableSlots.length > 0 && (
+                <Text style={styles.pickerIcon}>▼</Text>
               )}
-            </Picker>
+            </TouchableOpacity>
             
             {availableSlots.length === 0 && (
               <Text style={styles.noSlotsText}>
@@ -585,6 +625,47 @@ export default function AppointmentBooking() {
         </TouchableOpacity>
 
       </ScrollView>
+
+      {/* Doctor Dropdown Modal */}
+      <CustomDropdown
+        visible={showDoctorDropdown}
+        onClose={() => setShowDoctorDropdown(false)}
+        options={doctors}
+        selectedValue={selectedDoctor}
+        onSelect={(value, doctor) => setSelectedDoctor(value)}
+        title="Select Doctor"
+        renderItem={(doc) => `${doc.name} - ${doc.specialization}`}
+      />
+
+      {/* Slot Dropdown Modal */}
+      <CustomDropdown
+        visible={showSlotDropdown}
+        onClose={() => setShowSlotDropdown(false)}
+        options={availableSlots}
+        selectedValue={slot}
+        onSelect={(value) => setSlot(value)}
+        title="Select Time Slot"
+      />
+
+      {/* Specialization Dropdown Modal */}
+      <CustomDropdown
+        visible={showSpecDropdown}
+        onClose={() => setShowSpecDropdown(false)}
+        options={[{ label: "All Specializations", value: "" }, ...specializations.map(s => ({ label: s, value: s }))]}
+        selectedValue={selectedSpecialization}
+        onSelect={(value) => setSelectedSpecialization(value)}
+        title="Select Specialization"
+      />
+
+      {/* Location Dropdown Modal */}
+      <CustomDropdown
+        visible={showLocDropdown}
+        onClose={() => setShowLocDropdown(false)}
+        options={[{ label: "All Locations", value: "" }, ...locations.map(l => ({ label: l, value: l }))]}
+        selectedValue={selectedLocation}
+        onSelect={(value) => setSelectedLocation(value)}
+        title="Select Location"
+      />
     </SafeAreaView>
   );
 }
@@ -602,7 +683,6 @@ const styles = StyleSheet.create({
     paddingBottom: 30
   },
   
-  // Header
   heading: {
     fontSize: 28,
     fontWeight: "bold",
@@ -612,7 +692,6 @@ const styles = StyleSheet.create({
     marginTop: 10
   },
 
-  // Card Layout
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -632,7 +711,6 @@ const styles = StyleSheet.create({
     marginBottom: 12
   },
 
-  // Input Styles
   input: {
     borderWidth: 1,
     borderColor: "#e0e0e0",
@@ -643,7 +721,6 @@ const styles = StyleSheet.create({
     fontSize: 16
   },
 
-  // Search Styles
   searchContainer: {
     flexDirection: "row",
     marginBottom: 12
@@ -670,7 +747,6 @@ const styles = StyleSheet.create({
     fontSize: 18
   },
 
-  // Filter Styles
   filterToggle: {
     backgroundColor: "#f8f9fa",
     padding: 12,
@@ -698,11 +774,6 @@ const styles = StyleSheet.create({
     color: "#333",
     marginBottom: 4,
     marginTop: 8
-  },
-  filterPicker: {
-    backgroundColor: "#fff",
-    borderRadius: 6,
-    marginBottom: 8
   },
 
   filterButtons: {
@@ -743,14 +814,97 @@ const styles = StyleSheet.create({
     fontStyle: "italic"
   },
 
-  // Picker Styles
-  picker: {
+  // iOS Compatible Picker Button
+  pickerButton: {
     backgroundColor: "#fafafa",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
     borderRadius: 8,
-    marginBottom: 12
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  pickerButtonText: {
+    fontSize: 16,
+    color: "#333",
+    flex: 1
+  },
+  pickerIcon: {
+    fontSize: 12,
+    color: "#666",
+    marginLeft: 8
+  },
+  disabledText: {
+    color: "#999"
   },
 
-  // Doctor Details Styles
+  // Dropdown Modal Styles
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownModal: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '85%',
+    maxHeight: '70%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  dropdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  dropdownTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  dropdownClose: {
+    fontSize: 24,
+    color: '#666',
+    fontWeight: 'bold',
+  },
+  dropdownList: {
+    maxHeight: 400,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#f8f9fa',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  dropdownItemTextSelected: {
+    fontWeight: '600',
+    color: '#007bff',
+  },
+  checkmark: {
+    fontSize: 20,
+    color: '#007bff',
+    fontWeight: 'bold',
+  },
+
   doctorDetailsCard: {
     backgroundColor: "#f8f9fa",
     padding: 12,
@@ -783,7 +937,6 @@ const styles = StyleSheet.create({
     lineHeight: 18
   },
 
-  // Calendar Styles
   dateSelector: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -903,7 +1056,6 @@ const styles = StyleSheet.create({
     borderRadius: 6
   },
 
-  // Booking Summary Styles
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -923,7 +1075,6 @@ const styles = StyleSheet.create({
     fontWeight: "500"
   },
 
-  // No Results
   noResultsText: {
     textAlign: "center",
     color: "#666",
@@ -939,7 +1090,6 @@ const styles = StyleSheet.create({
     fontStyle: "italic"
   },
 
-  // Book Button
   bookButton: {
     backgroundColor: "#007bff",
     paddingVertical: 16,
@@ -961,7 +1111,6 @@ const styles = StyleSheet.create({
     textAlign: "center"
   },
 
-  // Loader
   loaderContainer: {
     flex: 1,
     justifyContent: "center",

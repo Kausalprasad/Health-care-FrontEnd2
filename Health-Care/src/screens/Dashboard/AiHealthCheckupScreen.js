@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -6,149 +6,113 @@ import {
   StyleSheet,
   SafeAreaView,
   StatusBar,
+  ScrollView,
   Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 const HealthCheckupApp = ({ navigation }) => {
-  const [activeTab, setActiveTab] = useState('static');
+  const healthItems = [
+    { 
+      title: 'Skin Health', 
+      subtitle: 'Get skin health analysis', 
+      icon: require('../../../assets/AiHealthCheckUp/skinHealth.png'),
+      bgColor: '#EAEAF8',
+      onPress: () => navigation.navigate('SkinCheck') 
+    },
+    { 
+      title: 'Eye Health', 
+      subtitle: 'Eye health recommendations', 
+      icon: require('../../../assets/AiHealthCheckUp/eye3.png'),
+      bgColor: '#EAEAF8',
+      onPress: () => navigation.navigate('EyeScreen') 
+    },
+    { 
+      title: 'Nail Health', 
+      subtitle: 'Get insights with nail health', 
+      icon: require('../../../assets/AiHealthCheckUp/nail.png'),
+      bgColor: '#EAEAF8',
+      onPress: () => navigation.navigate('NailAnalysis') 
+    },
+    { 
+      title: 'Tongue Health', 
+      subtitle: 'Analyze your tongue condition', 
+      icon: require('../../../assets/AiHealthCheckUp/t.png'),
+      bgColor: '#EAEAF8',
+      onPress: () => navigation.navigate('TongueDiseaseChecker') 
+    },
+    { 
+      title: 'Scalp Health', 
+      subtitle: 'Get scalp health analysis', 
+      icon: require('../../../assets/AiHealthCheckUp/scalp.png'),
+      bgColor: '#EAEAF8',
+      onPress: () => navigation.navigate('HairCheckScreen') 
+    },
+    { 
+      title: 'Melanoma Detector', 
+      subtitle: 'Live melanoma risk detection', 
+      icon: require('../../../assets/AiHealthCheckUp/Melanoma.png'),
+      bgColor: '#EAEAF8',
+      onPress: () => navigation.navigate('MelanomaScreen') 
+    },
+    // { 
+    //   title: 'Preventive Health', 
+    //   subtitle: 'Get Preventive Health analysis', 
+    //   icon: require('../../../assets/AiHealthCheckUp/skinHealth.png'),
+    //   bgColor: '#EAEAF8',
+    //   onPress: () => navigation.navigate('PreventiveHealthScreen') 
+    // },
+    // { 
+    //   title: 'Insurance', 
+    //   subtitle: 'Get Insurance Health analysis', 
+    //   icon: require('../../../assets/AiHealthCheckUp/skinHealth.png'),
+    //   bgColor: '#EAEAF8',
+    //   onPress: () => navigation.navigate('InsuranceScreen') 
+    // },
+    // { 
+    //   title: 'Diet Plan', 
+    //   subtitle: 'Diet Health analysis', 
+    //   icon: require('../../../assets/AiHealthCheckUp/skinHealth.png'),
+    //   bgColor: '#EAEAF8',
+    //   onPress: () => navigation.navigate('DietScreen') 
+    // },
+    // { 
+    //   title: 'Vitals Monitor', 
+    //   subtitle: 'Get Vitals Health analysis', 
+    //   icon: require('../../../assets/AiHealthCheckUp/skinHealth.png'),
+    //   bgColor: '#EAEAF8',
+    //   onPress: () => navigation.navigate('VitalsScreen') 
+    // },
+    // { 
+    //   title: 'Vitals Monitor', 
+    //   subtitle: 'Get Vitals Health analysis', 
+    //   icon: require('../../../assets/AiHealthCheckUp/skinHealth.png'),
+    //   bgColor: '#EAEAF8',
+    //   onPress: () => navigation.navigate('XrayScreen') 
+    // },
+     
+  ];
 
-  const handleTongueHealth = () => navigation.navigate('TongueDiseaseChecker');
-  const handleAnemicPredictor = () => navigation.navigate('NailAnalysis');
-  const handleSkinHealth = () => navigation.navigate('SkinCheck');
-  const handleEyeHealth = () => navigation.navigate('EyeScreen');
-  const handleMelanomaDetection = () => navigation.navigate('MelanomaScreen');
-   const handleHairHealth = () => navigation.navigate('HairCheckScreen');
-
-  const StaticAnalysisContent = () => (
-    <View style={styles.contentContainer}>
-      <View style={styles.row}>
-        <TouchableOpacity style={styles.card} onPress={handleTongueHealth}>
-          <View style={styles.cardContent}>
-            <View style={styles.cardTextContainer}>
-              <Text style={styles.cardTitle}>Tongue Health</Text>
-              <Text style={styles.cardSubtitle}>Analyze your tongue condition</Text>
-            </View>
-            <View style={styles.iconContainer}>
-              <Image
-                source={require('../../../assets/icons/camara.png')}
-                style={{ width: 35, height: 35, resizeMode: 'contain' }}
-              />
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.card} onPress={handleAnemicPredictor}>
-          <View style={styles.cardContent}>
-            <View style={styles.cardTextContainer}>
-              <Text style={styles.cardTitle}>Anemic Predictor</Text>
-              <Text style={styles.cardSubtitle}>Upload an image of your nails</Text>
-            </View>
-            <View style={styles.iconContainer}>
-              <Image
-                source={require('../../../assets/icons/camara.png')}
-                style={{ width: 35, height: 35, resizeMode: 'contain' }}
-              />
-            </View>
-
-          </View>
-        </TouchableOpacity>
+  const renderHealthCard = (item, index) => (
+    <TouchableOpacity
+      key={index}
+      style={styles.healthCard}
+      onPress={item.onPress}
+      activeOpacity={0.7}
+    >
+      <View style={styles.cardContent}>
+        <Text style={styles.cardTitle}>{item.title}</Text>
+        <Text style={styles.cardSubtitle}>{item.subtitle}</Text>
       </View>
-
-      <View style={styles.row}>
-        <TouchableOpacity style={styles.card} onPress={handleSkinHealth}>
-          <View style={styles.cardContent}>
-            <View style={styles.cardTextContainer}>
-              <Text style={styles.cardTitle}>Skin Health</Text>
-              <Text style={styles.cardSubtitle}>Get skin health analysis</Text>
-            </View>
-            <View style={styles.iconContainer}>
-              <Image
-                source={require('../../../assets/icons/camara.png')}
-                style={{ width: 35, height: 35, resizeMode: 'contain' }}
-              />
-            </View>
-          </View>
-        </TouchableOpacity>
-
-
-        <TouchableOpacity style={styles.card} onPress={handleEyeHealth}>
-          <View style={styles.cardContent}>
-            <View style={styles.cardTextContainer}>
-              <Text style={styles.cardTitle}>Eye Health</Text>
-              <Text style={styles.cardSubtitle}>Eye health recommendations</Text>
-            </View>
-            <View style={styles.iconContainer}>
-              <Image
-                source={require('../../../assets/icons/camara.png')}
-                style={{ width: 35, height: 35, resizeMode: 'contain' }}
-              />
-            </View>
-
-          </View>
-        </TouchableOpacity>
-
-
+      <View style={styles.iconWrapper}>
+        <View style={[styles.iconCircle, { backgroundColor: item.bgColor }]} />
+        <Image 
+          source={item.icon} 
+          style={styles.iconImage}
+          resizeMode="contain"
+        />
       </View>
-      
-      <View style={styles.row}>
-        <TouchableOpacity style={styles.card} onPress={handleHairHealth}>
-          <View style={styles.cardContent}>
-            <View style={styles.cardTextContainer}>
-              <Text style={styles.cardTitle}>Hair Health</Text>
-              <Text style={styles.cardSubtitle}>Get Hair health analysis</Text>
-            </View>
-            <View style={styles.iconContainer}>
-              <Image
-                source={require('../../../assets/icons/camara.png')}
-                style={{ width: 35, height: 35, resizeMode: 'contain' }}
-              />
-            </View>
-          </View>
-        </TouchableOpacity>
-
-
-        <TouchableOpacity style={styles.card} onPress={handleEyeHealth}>
-          <View style={styles.cardContent}>
-            <View style={styles.cardTextContainer}>
-              <Text style={styles.cardTitle}>Eye Health</Text>
-              <Text style={styles.cardSubtitle}>Eye health recommendations</Text>
-            </View>
-            <View style={styles.iconContainer}>
-              <Image
-                source={require('../../../assets/icons/camara.png')}
-                style={{ width: 35, height: 35, resizeMode: 'contain' }}
-              />
-            </View>
-
-          </View>
-        </TouchableOpacity>
-
-
-      </View>
-
-    </View>
-  );
-
-  const LiveAnalysisContent = () => (
-    <View style={styles.contentContainer}>
-      <View style={styles.row}>
-        <TouchableOpacity style={[styles.card, styles.liveCard]} onPress={handleMelanomaDetection}>
-          <View style={styles.cardContent}>
-            <View style={styles.cardTextContainer}>
-              <Text style={styles.cardTitle}>Detect Melanoma</Text>
-              <Text style={styles.cardSubtitle}>Live melanoma risk detection</Text>
-            </View>
-            <View style={styles.iconContainer}>
-              <Image
-                source={require('../../../assets/icons/viedo.png')}
-                style={{ width: 35, height: 35, resizeMode: 'contain' }}
-              />
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -164,35 +128,21 @@ const HealthCheckupApp = ({ navigation }) => {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'static' && styles.activeTab]}
-          onPress={() => setActiveTab('static')}
-        >
-          <Text style={[styles.tabText, activeTab === 'static' && styles.activeTabText]}>
-            Static Analysis
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'live' && styles.activeTab]}
-          onPress={() => setActiveTab('live')}
-        >
-          <Text style={[styles.tabText, activeTab === 'live' && styles.activeTabText]}>
-            Live Analysis
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Content */}
-      {activeTab === 'static' ? <StaticAnalysisContent /> : <LiveAnalysisContent />}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.cardsContainer}>
+          {healthItems.map((item, index) => renderHealthCard(item, index))}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  container: {
+    flex: 1,
+    backgroundColor: '#fff'
+  },
   header: {
     marginTop: StatusBar.currentHeight || 0,
     flexDirection: 'row',
@@ -201,23 +151,87 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
     backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0'
   },
-  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' },
-  headerTitle: { fontSize: 18, fontWeight: '600', color: '#000' },
-  tabContainer: { flexDirection: 'row', backgroundColor: '#fff', paddingHorizontal: 20 },
-  tab: { flex: 1, paddingVertical: 15, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  activeTab: { borderBottomColor: '#7475B4' },
-  tabText: { fontSize: 16, color: '#999', fontWeight: '500' },
-  activeTabText: { color: '#7475B4', fontWeight: '600' },
-  contentContainer: { flex: 1, padding:10 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  card: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 20, marginHorizontal: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
-  liveCard: { marginRight: '50%' },
-  cardContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardTextContainer: { flex: 1 },
-  cardTitle: { fontSize: 18, fontWeight: '600', color: '#000', marginBottom: 8 },
-  cardSubtitle: { fontSize: 14, color: '#666', lineHeight: 20 },
-  iconContainer: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'flex-start'
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000'
+  },
+  content: {
+    flex: 1
+  },
+  cardsContainer: {
+    padding: 16
+  },
+  healthCard: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  backgroundColor: '#fff',
+  borderRadius: 16,
+  padding: 8,
+  marginBottom: 12,
+  overflow: 'hidden',
+
+  // Border
+  borderWidth: 1,
+  borderColor: '#e0e0e0', // light gray (you can change to any color you prefer)
+
+  // Optional shadow if you want a more elevated look
+  // shadowColor: '#000',
+  // shadowOffset: { width: 0, height: 2 },
+  // shadowOpacity: 0.08,
+  // shadowRadius: 4,
+  // elevation: 3,
+},
+
+  cardContent: {
+    flex: 1,
+    marginLeft: 12
+  },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: "Poppins_400Regular",
+    color: '#000',
+    marginBottom: 4,
+  },
+  cardSubtitle: {
+    fontSize: 15,
+    fontFamily: "Poppins_400Regular",
+    color: '#666',
+    lineHeight: 18
+  },
+  iconWrapper: {
+    width: 90,
+    height: 90,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  iconCircle: {
+    position: 'absolute',
+    width: 122,
+    height: 122,
+    borderRadius: 60,
+    bottom: -40,
+    left: -8
+  },
+  iconImage: {
+    width: 69,
+    height: 69,
+    zIndex: 1,
+    top: 22,
+    left: 5
+  }
 });
 
 export default HealthCheckupApp;

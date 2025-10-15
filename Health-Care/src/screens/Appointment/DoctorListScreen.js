@@ -1,4 +1,4 @@
-// --- Updated BookAppointmentScreen with Navigation --- //
+// --- Updated BookAppointmentScreen with Custom Dropdowns --- //
 
 import React, { useEffect, useState } from "react";
 import {
@@ -13,9 +13,9 @@ import {
   SafeAreaView,
   StatusBar,
   Modal,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Picker } from "@react-native-picker/picker";
 import { BASE_URL } from "../../config/config";
 
 export default function BookAppointmentScreen({ navigation }) {
@@ -35,9 +35,20 @@ export default function BookAppointmentScreen({ navigation }) {
   const [tempLocation, setTempLocation] = useState("");
   const [tempMinRating, setTempMinRating] = useState("");
 
+  // Dropdown state
+  const [showDropdown, setShowDropdown] = useState(null);
+
   // unique lists
   const [specializations, setSpecializations] = useState([]);
   const [locations, setLocations] = useState([]);
+
+  // Rating options
+  const ratingOptions = [
+    { label: "Any Rating", value: "" },
+    { label: "3+ Stars", value: "3" },
+    { label: "4+ Stars", value: "4" },
+    { label: "4.5+ Stars", value: "4.5" },
+  ];
 
   // Backend se doctors fetch karna
   useEffect(() => {
@@ -108,6 +119,77 @@ export default function BookAppointmentScreen({ navigation }) {
     setTempSpecialization("");
     setTempLocation("");
     setTempMinRating("");
+    setShowFilters(false);
+  };
+
+  // Custom Dropdown Component
+  const CustomFilterDropdown = ({ field, label, options, value, onValueChange }) => {
+    const selectedOption = options.find(opt => opt.value === value);
+
+    return (
+      <View style={styles.filterGroup}>
+        <Text style={styles.filterLabel}>{label}</Text>
+        <TouchableOpacity
+          style={styles.filterDropdownButton}
+          onPress={() => setShowDropdown(field)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.filterDropdownButtonText}>
+            {selectedOption?.label || 'Select'}
+          </Text>
+          <Ionicons name="chevron-down" size={20} color="#666" />
+        </TouchableOpacity>
+
+        <Modal
+          visible={showDropdown === field}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowDropdown(null)}
+        >
+          <TouchableOpacity
+            style={styles.dropdownOverlay}
+            activeOpacity={1}
+            onPress={() => setShowDropdown(null)}
+          >
+            <View style={styles.dropdownModal}>
+              <View style={styles.dropdownHeader}>
+                <Text style={styles.dropdownTitle}>{label}</Text>
+                <TouchableOpacity onPress={() => setShowDropdown(null)}>
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.dropdownList}>
+                {options.map((option, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.dropdownItem,
+                      value === option.value && styles.dropdownItemSelected,
+                    ]}
+                    onPress={() => {
+                      onValueChange(option.value);
+                      setShowDropdown(null);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownItemText,
+                        value === option.value && styles.dropdownItemTextSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    {value === option.value && (
+                      <Ionicons name="checkmark" size={20} color="#007AFF" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+    );
   };
 
   // Star rating component
@@ -179,6 +261,17 @@ export default function BookAppointmentScreen({ navigation }) {
       </SafeAreaView>
     );
   }
+
+  // Prepare dropdown options
+  const specializationOptions = [
+    { label: "All Specializations", value: "" },
+    ...specializations.map(spec => ({ label: spec, value: spec }))
+  ];
+
+  const locationOptions = [
+    { label: "All Locations", value: "" },
+    ...locations.map(loc => ({ label: loc, value: loc }))
+  ];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -252,43 +345,41 @@ export default function BookAppointmentScreen({ navigation }) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Filter Doctors</Text>
+            <View style={styles.modalHeaderBar}>
+              <Text style={styles.modalTitle}>Filter Doctors</Text>
+              <TouchableOpacity onPress={() => setShowFilters(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
 
-            {/* Specialization */}
-            <Text style={styles.filterLabel}>Specialization</Text>
-            <Picker
-              selectedValue={tempSpecialization}
-              onValueChange={(value) => setTempSpecialization(value)}
-            >
-              <Picker.Item label="All" value="" />
-              {specializations.map((spec, idx) => (
-                <Picker.Item key={idx} label={spec} value={spec} />
-              ))}
-            </Picker>
+            <ScrollView style={styles.filterScrollView}>
+              {/* Specialization Dropdown */}
+              <CustomFilterDropdown
+                field="specialization"
+                label="Specialization"
+                options={specializationOptions}
+                value={tempSpecialization}
+                onValueChange={setTempSpecialization}
+              />
 
-            {/* Location */}
-            <Text style={styles.filterLabel}>Location</Text>
-            <Picker
-              selectedValue={tempLocation}
-              onValueChange={(value) => setTempLocation(value)}
-            >
-              <Picker.Item label="All" value="" />
-              {locations.map((loc, idx) => (
-                <Picker.Item key={idx} label={loc} value={loc} />
-              ))}
-            </Picker>
+              {/* Location Dropdown */}
+              <CustomFilterDropdown
+                field="location"
+                label="Location"
+                options={locationOptions}
+                value={tempLocation}
+                onValueChange={setTempLocation}
+              />
 
-            {/* Rating */}
-            <Text style={styles.filterLabel}>Minimum Rating</Text>
-            <Picker
-              selectedValue={tempMinRating}
-              onValueChange={(value) => setTempMinRating(value)}
-            >
-              <Picker.Item label="Any" value="" />
-              <Picker.Item label="3+" value="3" />
-              <Picker.Item label="4+" value="4" />
-              <Picker.Item label="4.5+" value="4.5" />
-            </Picker>
+              {/* Rating Dropdown */}
+              <CustomFilterDropdown
+                field="rating"
+                label="Minimum Rating"
+                options={ratingOptions}
+                value={tempMinRating}
+                onValueChange={setTempMinRating}
+              />
+            </ScrollView>
 
             {/* Buttons */}
             <View style={styles.modalButtons}>
@@ -296,13 +387,13 @@ export default function BookAppointmentScreen({ navigation }) {
                 style={[styles.modalButton, styles.clearButton]}
                 onPress={clearFilters}
               >
-                <Text style={styles.clearButtonText}>Clear</Text>
+                <Text style={styles.clearButtonText}>Clear All</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.applyButton]}
                 onPress={applyFilters}
               >
-                <Text style={styles.applyButtonText}>Apply</Text>
+                <Text style={styles.applyButtonText}>Apply Filters</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -312,7 +403,6 @@ export default function BookAppointmentScreen({ navigation }) {
   );
 }
 
-// --- Styles (same as before + modal styles) ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   header: {
@@ -398,40 +488,142 @@ const styles = StyleSheet.create({
   loader: { flex: 1, justifyContent: "center", alignItems: "center", gap: 16 },
   loadingText: { fontSize: 16, color: "#666" },
 
-  // Modal styles
+  // Filter Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContainer: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+    maxHeight: "80%",
+  },
+  modalHeaderBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#000",
+  },
+  filterScrollView: {
+    maxHeight: 400,
+  },
+  filterGroup: {
+    marginBottom: 20,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
+  },
+  filterDropdownButton: {
+    backgroundColor: "#f8f8f8",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    borderRadius: 12,
+    padding: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  filterDropdownButtonText: {
+    fontSize: 16,
+    color: "#000",
+    flex: 1,
+  },
+  
+  // Dropdown Modal styles
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
   },
-  modalContainer: {
-    width: "90%",
+  dropdownModal: {
     backgroundColor: "#fff",
     borderRadius: 16,
-    padding: 20,
+    width: "85%",
+    maxHeight: "60%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
   },
-  modalTitle: {
+  dropdownHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  dropdownTitle: {
     fontSize: 18,
     fontWeight: "600",
-    marginBottom: 16,
-    textAlign: "center",
+    color: "#000",
   },
-  filterLabel: { fontSize: 14, fontWeight: "500", marginTop: 10 },
+  dropdownList: {
+    maxHeight: 300,
+  },
+  dropdownItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f5f5f5",
+  },
+  dropdownItemSelected: {
+    backgroundColor: "#f0f8ff",
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: "#333",
+    flex: 1,
+  },
+  dropdownItemTextSelected: {
+    color: "#007AFF",
+    fontWeight: "500",
+  },
+  
+  // Modal Action Buttons
   modalButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 20,
+    gap: 12,
   },
   modalButton: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     alignItems: "center",
-    marginHorizontal: 5,
   },
-  clearButton: { backgroundColor: "#f0f0f0" },
-  applyButton: { backgroundColor: "#007AFF" },
-  clearButtonText: { color: "#000", fontWeight: "600" },
-  applyButtonText: { color: "#fff", fontWeight: "600" },
+  clearButton: {
+    backgroundColor: "#f0f0f0",
+  },
+  applyButton: {
+    backgroundColor: "#007AFF",
+  },
+  clearButtonText: {
+    color: "#666",
+    fontSize: 16,
+    fontWeight: "600", 
+  },
+  applyButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
 });

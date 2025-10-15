@@ -27,74 +27,197 @@ export default function CosmeticScreen({ navigation }) {
   const [showImageOptions, setShowImageOptions] = useState(false);
 
   // Pick image from gallery or camera
-  const pickPhoto = async (fromCamera = false) => {
-    const permission = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+  
+  // ✅ Exact same permission function as tongue (working)
+const getPermissions = async (type = 'camera') => {
+  try {
+    if (type === 'camera') {
+      // Camera permission
+      const cameraPermission = await ImagePicker.getCameraPermissionsAsync()
+      if (cameraPermission.status !== 'granted') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync()
+        if (status !== 'granted') {
+          Alert.alert(
+            'Camera Permission Required',
+            'Please enable camera permission from device settings to take photos.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'OK' }
+            ]
+          )
+          return false
+        }
+      }
+    } else {
+      // Media Library permission
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync()
+      if (mediaPermission.status !== 'granted') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+        if (status !== 'granted') {
+          Alert.alert(
+            'Gallery Permission Required',
+            'Please enable gallery permission from device settings to select photos.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'OK' }
+            ]
+          )
+          return false
+        }
+      }
+    }
+    return true
+  } catch (error) {
+    console.error('Permission error:', error)
+    return false
+  }
+}
 
-    if (permission.status !== "granted") {
-      Alert.alert("Permission needed", "Please allow permissions to continue!");
-      return;
+// ✅ Exact same pickPhoto function as tongue (working)
+const pickPhoto = async (fromCamera = false) => {
+  try {
+    console.log(`📸 ${fromCamera ? 'Camera' : 'Gallery'} selected`)
+
+    // Get permissions
+    const hasPermission = await getPermissions(fromCamera ? 'camera' : 'gallery')
+    if (!hasPermission) {
+      setShowImageOptions(false)
+      return
     }
 
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 1,
-        })
-      : await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 1,
-        });
-
-    if (!result.canceled) {
-      setImage(result.assets[0].uri);
-      setResult(null);
-      setShowImageOptions(false);
-      // Auto analyze after selecting image
-      handlePredict(result.assets[0].uri);
+    const options = {
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8, // Optimize for network
+      base64: false,
+      exif: false,
     }
-  };
 
-  // Upload and predict using fetch
-  const handlePredict = async (imageUri = null) => {
-    const uri = imageUri || image;
-    if (!uri) return Alert.alert("No Image", "Please select or capture an image first!");
+    console.log('📱 Launching image picker...')
 
-    setLoading(true);
-
-    const formData = new FormData();
-    formData.append("image", {
-      uri: uri,
-      type: "image/jpeg",
-      name: "photo.jpg",
-    });
-    formData.append("skin_type", skinType);
-
-    try {
-      const response = await fetch(`${BASE_URL}/api/cosmetic/predict`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-        body: formData,
-      });
-
-      const data = await response.json();
-      console.log("✅ Cosmetic prediction result:", data);
-      setResult(data);
-    } catch (err) {
-      console.error("Cosmetic prediction error:", err);
-      Alert.alert("Error", "Prediction failed. Please try again!");
-      setResult({ error: "Network error. Please check your connection." });
-    } finally {
-      setLoading(false);
+    let result
+    if (fromCamera) {
+      result = await ImagePicker.launchCameraAsync(options)
+    } else {
+      result = await ImagePicker.launchImageLibraryAsync(options)
     }
-  };
+
+    console.log('📋 Image picker result:', {
+      canceled: result.canceled,
+      hasAssets: !!result.assets,
+      assetsLength: result.assets?.length
+    })
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0]
+      console.log('✅ Image selected:', {
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+        fileSize: asset.fileSize
+      })
+
+      setImage(asset.uri) // Using setImage instead of setImageUri
+      setResult(null)
+      setShowImageOptions(false)
+      
+      // Auto analyze with delay
+      setTimeout(() => {
+        handlePredict(asset)
+      }, 300)
+    } else {
+      console.log('❌ Image picker canceled or no assets')
+      setShowImageOptions(false)
+    }
+  } catch (error) {
+    console.error('❌ Image picker error:', error)
+    setShowImageOptions(false)
+    Alert.alert(
+      'Error', 
+      `Failed to ${fromCamera ? 'take photo' : 'select image'}. Please try again.`
+    )
+  }
+}
+
+// ✅ Same backend logic as tongue but for cosmetic API
+const handlePredict = async (asset) => {
+  if (!asset && !image) {
+    Alert.alert("Error", "Please select a photo first!")
+    return
+  }
+
+  const imageSource = asset?.uri || image
+  console.log('🚀 Sending to backend:', imageSource)
+  console.log('🌐 API Endpoint:', `${BASE_URL}/api/cosmetic/predict`)
+
+  setLoading(true)
+  
+  try {
+    // Create FormData
+    const formData = new FormData()
+    
+    // File extension and MIME type
+    const uriParts = imageSource.split('.')
+    const fileType = uriParts[uriParts.length - 1].toLowerCase()
+    const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg'
+    
+    console.log('📁 File info:', { fileType, mimeType })
+
+    // Append file to FormData (using 'image' as per cosmetic API)
+    formData.append('image', {
+      uri: imageSource,
+      name: `cosmetic_${Date.now()}.${fileType}`,
+      type: mimeType,
+    })
+
+    // Append skin type
+    formData.append('skin_type', skinType || 'normal')
+
+    console.log('📤 Making API request...')
+
+    // API call without Content-Type header (let FormData handle it)
+    const response = await fetch(`${BASE_URL}/api/cosmetic/predict`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+        // Don't set Content-Type for FormData
+      },
+    })
+
+    console.log('📥 Response status:', response.status)
+    console.log('📥 Response headers:', response.headers)
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    console.log('✅ API Response:', JSON.stringify(data, null, 2))
+
+    if (data) {
+      setResult(data)
+    } else {
+      throw new Error('Empty response from server')
+    }
+
+  } catch (error) {
+    console.error('❌ API Error:', error)
+    
+    let errorMessage = 'Network error occurred'
+    if (error.message.includes('fetch')) {
+      errorMessage = 'Unable to connect to server. Check your internet connection.'
+    } else if (error.message.includes('HTTP error')) {
+      errorMessage = 'Server error occurred. Please try again later.'
+    }
+
+    Alert.alert('Analysis Failed', errorMessage)
+    setResult({ error: errorMessage })
+  } finally {
+    setLoading(false)
+  }
+}
 
   // Get skin type info
   const getSkinTypeInfo = (type) => {

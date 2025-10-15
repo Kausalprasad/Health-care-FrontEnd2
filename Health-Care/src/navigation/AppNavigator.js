@@ -31,7 +31,24 @@ import MentalHealthScreen from "../screens/Model/MentalHealthScreen";
 import HairCheckScreen from "../screens/Model/HairCheckScreen";
 import Sidebar from "../components/Sidebar";
 import UserProfileScreen from "../screens/UserProfile/UserProfileScreen";
-
+import ProfileSetupStep2 from "../screens/UserProfile/ProfileSetupStep2";
+import ProfileSetupStep3 from "../screens/UserProfile/ProfileSetupStep3";
+import ProfileSetupStep1 from "../screens/UserProfile/ProfileSetupStep1";
+import ProfileViewScreen from "../screens/UserProfile/ProfileViewScreen";
+// import VitalsScreen from "../screens/Vitals/VitalsScreen";
+import MoodCheckupApp from "../screens/MoodCheckup/MoodCheckupScreen";
+import PreventiveHealthScreen from "../screens/PreventiveHealth/PreventiveHealthScreen";
+import InsuranceScreen from "../screens/Insurance/InsuranceScreen";
+import DietScreen from "../screens/Diet/dietScreen";
+import AddPatientScreen from "../screens/Appointment/AddPatientScreen";
+import FeaturesScreen from "../screens/Model/FeaturesScreen";
+import XrayScreen from "../screens/Model/XrayScreen";
+import VoiceRedirectScreen from "../screens/Model/VoiceRedirectScreen";
+import CalorieCalculator from "../screens/Model/CalorieCalculator";
+import PregnancyScreen from "../screens/Model/PregnancyScreen";
+import AddDocumentScreen from "../screens/Vault/AddDocumentScreen";
+import DayDetailScreen from "../screens/Diet/DayDetailScreen";
+import DietResult from "../screens/Diet/DietResult";
 
 
 
@@ -97,6 +114,28 @@ export default function AppNavigator() {
   <Stack.Screen name="MentalHealthScreen" component={MentalHealthScreen} />
   <Stack.Screen name="Sidebar" component={Sidebar}/>
   <Stack.Screen name="UserProfileScreen" component={UserProfileScreen}/>
+  <Stack.Screen name="ProfileSetupStep2" component={ProfileSetupStep2}/>
+  <Stack.Screen name="ProfileSetupStep3" component={ProfileSetupStep3}/>
+  <Stack.Screen name="ProfileSetupStep1" component={ProfileSetupStep1}/>
+  <Stack.Screen name="ProfileViewScreen" component={ProfileViewScreen}/>
+  {/* <Stack.Screen name="VitalsScreen" component={VitalsScreen}/> */}
+  {/*
+  
+
+//  */}
+ <Stack.Screen name="AddPatientScreen" component={AddPatientScreen}/>
+  <Stack.Screen name="MoodCheckupApp" component={MoodCheckupApp}/>
+  <Stack.Screen name="PreventiveHealthScreen" component={PreventiveHealthScreen}/>
+   <Stack.Screen name="InsuranceScreen" component={InsuranceScreen}/>
+   <Stack.Screen name="DietScreen" component={DietScreen}/> 
+  <Stack.Screen name="FeaturesScreen" component={FeaturesScreen}/>
+  <Stack.Screen name="XrayScreen" component={XrayScreen}/>
+  <Stack.Screen name="VoiceRedirectScreen" component={VoiceRedirectScreen}/>
+  <Stack.Screen name="CalorieCalculator" component={CalorieCalculator}/>
+  <Stack.Screen name="PregnancyScreen" component={PregnancyScreen}/>
+  <Stack.Screen name="AddDocumentScreen" component={AddDocumentScreen}/>
+  <Stack.Screen name="DayDetailScreen" component={DayDetailScreen}/>
+  <Stack.Screen name="DietResult" component={DietResult}/>
   </>
   
 </Stack.Navigator>

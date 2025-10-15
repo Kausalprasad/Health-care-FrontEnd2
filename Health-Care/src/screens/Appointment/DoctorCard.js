@@ -7,24 +7,83 @@ import {
   SafeAreaView,
   StatusBar,
   TouchableOpacity,
-  TextInput,
   ScrollView,
   ActivityIndicator,
   Alert,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BASE_URL } from "../../config/config";
+import { Picker } from "@react-native-picker/picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function DoctorDetailScreen({ route, navigation }) {
   const { doctor } = route.params;
 
-  const [patientName, setPatientName] = useState("");
-  const [patientEmail, setPatientEmail] = useState("");
+  // Patient states
+  const [patients, setPatients] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [loadingPatients, setLoadingPatients] = useState(false);
+
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [price, setPrice] = useState(0);
+  const [dates, setDates] = useState([]);
+
+  // ✅ Generate next 7 days
+  useEffect(() => {
+    const generateDates = () => {
+      const dateList = [];
+      for (let i = 0; i < 7; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() + i);
+        dateList.push({
+          date: date.toISOString().split("T")[0],
+          day: date.toLocaleDateString("en-US", { weekday: "short" }),
+          dayNum: date.getDate(),
+        });
+      }
+      setDates(dateList);
+    };
+    generateDates();
+  }, []);
+
+  // ✅ Fetch user's patients
+  const fetchPatients = async () => {
+    try {
+      setLoadingPatients(true);
+      const token = await AsyncStorage.getItem("token");
+      
+      const response = await fetch(`${BASE_URL}/api/patients`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setPatients(data);
+        if (data.length > 0) {
+          setSelectedPatient(data[0]._id); // Select first patient by default
+        }
+      } else {
+        Alert.alert("Error", "Failed to fetch patients");
+      }
+    } catch (error) {
+      console.error("Error fetching patients:", error);
+      Alert.alert("Error", "Something went wrong");
+    } finally {
+      setLoadingPatients(false);
+    }
+  };
+
+  // ✅ Load patients on mount
+  useEffect(() => {
+    fetchPatients();
+  }, []);
 
   // ✅ Fetch slots
   const fetchAvailableSlotsForDate = async (doctorId, date) => {
@@ -51,57 +110,83 @@ export default function DoctorDetailScreen({ route, navigation }) {
     }
   };
 
-  // ✅ Initialize today’s slots
+  // ✅ Initialize today's slots
   useEffect(() => {
     const today = new Date().toISOString().split("T")[0];
     setSelectedDate(today);
     fetchAvailableSlotsForDate(doctor._id, today);
   }, []);
 
+  // ✅ When date changes, fetch new slots
+  const handleDateSelect = (date) => {
+    setSelectedDate(date);
+    setSelectedTime(null);
+    fetchAvailableSlotsForDate(doctor._id, date);
+  };
+
   // ✅ Book Appointment
-const handleBooking = async () => {
-  if (!patientName.trim() || !patientEmail.trim()) {
-    Alert.alert("Error", "Please enter patient name and email");
-    return;
-  }
-  if (!selectedDate || !selectedTime) {
-    Alert.alert("Error", "Please select a date & slot");
-    return;
-  }
-
-  try {
-    setLoading(true);
-    const response = await fetch(`${BASE_URL}/api/bookings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        doctorId: doctor._id,
-        patientName,
-        patientEmail,
-        slot: selectedTime,
-      }),
-    });
-
-    const data = await response.json();
-    if (response.ok) {
-      Alert.alert("Success", "Appointment booked successfully");
-      setSelectedTime(null);
-      setPatientName("");
-      setPatientEmail("");
-
-      // ✅ Booking ke baad navigation
-      navigation.navigate("MyAppointments");
-    } else {
-      Alert.alert("Error", data.message || "Booking failed");
+  const handleBooking = async () => {
+    if (!selectedPatient) {
+      Alert.alert("Error", "Please select a patient");
+      return;
     }
-  } catch (err) {
-    console.error(err);
-    Alert.alert("Error", "Something went wrong");
-  } finally {
-    setLoading(false);
-  }
-};
+    if (!selectedDate || !selectedTime) {
+      Alert.alert("Error", "Please select a date & slot");
+      return;
+    }
 
+    try {
+      setLoading(true);
+      
+      // Get selected patient details
+      const patient = patients.find(p => p._id === selectedPatient);
+      
+      // Parse slot like "10:00-10:30"
+      const [startTime, endTime] = selectedTime.split("-");
+
+      const token = await AsyncStorage.getItem("token");
+
+      const response = await fetch(`${BASE_URL}/api/bookings`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          doctorId: doctor._id,
+          patientName: patient.name,
+          patientEmail: patient.email,
+          patientId: patient._id,
+          date: selectedDate,
+          startTime,
+          endTime,
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        Alert.alert("Success", "Appointment booked successfully");
+        setSelectedTime(null);
+        navigation.navigate("MyAppointments");
+      } else {
+        Alert.alert("Error", data.message || "Booking failed");
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Navigate to Add Patient
+  const handleAddPatient = () => {
+    navigation.navigate("AddPatientScreen", {
+      onPatientAdded: () => {
+        fetchPatients(); // Refresh patient list
+      }
+    });
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -157,29 +242,93 @@ const handleBooking = async () => {
           </View>
         </View>
 
-        {/* Patient Info */}
+        {/* Patient Selection */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeading}>Patient Info</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter patient name"
-            value={patientName}
-            onChangeText={setPatientName}
-          />
-          <TextInput
-            style={[styles.input, { marginTop: 10 }]}
-            placeholder="Enter patient email"
-            value={patientEmail}
-            onChangeText={setPatientEmail}
-            keyboardType="email-address"
-          />
+          <View style={styles.headerRow}>
+            <Text style={styles.sectionHeading}>Select Patient</Text>
+            <TouchableOpacity 
+              style={styles.addButton}
+              onPress={handleAddPatient}
+            >
+              <Ionicons name="add-circle" size={20} color="#6C63FF" />
+              <Text style={styles.addButtonText}>Add Patient</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loadingPatients ? (
+            <ActivityIndicator size="small" color="#6C63FF" />
+          ) : patients.length === 0 ? (
+            <View style={styles.noPatientBox}>
+              <Text style={styles.noPatientText}>No patients added yet</Text>
+              <TouchableOpacity 
+                style={styles.addFirstButton}
+                onPress={handleAddPatient}
+              >
+                <Text style={styles.addFirstButtonText}>Add Your First Patient</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={selectedPatient}
+                onValueChange={(itemValue) => setSelectedPatient(itemValue)}
+                style={styles.picker}
+              >
+                {patients.map((patient) => (
+                  <Picker.Item
+                    key={patient._id}
+                    label={`${patient.name} (${patient.relation})`}
+                    value={patient._id}
+                  />
+                ))}
+              </Picker>
+            </View>
+          )}
+        </View>
+
+        {/* 📅 Calendar Date Selector */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeading}>Select Date</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.dateScroll}
+          >
+            {dates.map((item) => (
+              <TouchableOpacity
+                key={item.date}
+                style={[
+                  styles.dateBox,
+                  selectedDate === item.date && styles.dateBoxSelected,
+                ]}
+                onPress={() => handleDateSelect(item.date)}
+              >
+                <Text
+                  style={[
+                    styles.dateDay,
+                    selectedDate === item.date && styles.dateDaySelected,
+                  ]}
+                >
+                  {item.day}
+                </Text>
+                <Text
+                  style={[
+                    styles.dateNum,
+                    selectedDate === item.date && styles.dateNumSelected,
+                  ]}
+                >
+                  {item.dayNum}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         {/* Available Slots */}
         <View style={styles.section}>
           <View style={styles.headerRow}>
             <Text style={styles.sectionHeading}>Available Slots</Text>
-            <Ionicons name="calendar-outline" size={20} color="#111" />
+            <Ionicons name="time-outline" size={20} color="#111" />
           </View>
 
           {loading ? (
@@ -217,7 +366,11 @@ const handleBooking = async () => {
       {/* Bottom Book Button */}
       <View style={styles.bottomContainer}>
         <Text style={styles.priceText}>₹{price}</Text>
-        <TouchableOpacity style={styles.bookButton} onPress={handleBooking}>
+        <TouchableOpacity 
+          style={[styles.bookButton, (!selectedPatient || !selectedTime) && styles.bookButtonDisabled]} 
+          onPress={handleBooking}
+          disabled={!selectedPatient || !selectedTime}
+        >
           <Text style={styles.bookButtonText}>
             {loading ? "Booking..." : "Book Appointment"}
           </Text>
@@ -273,19 +426,96 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: "#111",
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 14,
-    backgroundColor: "#fafafa",
-  },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 10,
   },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0EEFF",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  addButtonText: {
+    color: "#6C63FF",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    backgroundColor: "#fafafa",
+    overflow: "hidden",
+  },
+  picker: {
+    height: 50,
+  },
+  noPatientBox: {
+    padding: 20,
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderStyle: "dashed",
+  },
+  noPatientText: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 12,
+  },
+  addFirstButton: {
+    backgroundColor: "#6C63FF",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  addFirstButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  // 📅 Calendar Styles
+  dateScroll: { marginTop: 10 },
+  dateBox: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    marginRight: 10,
+    alignItems: "center",
+    minWidth: 60,
+    backgroundColor: "#fafafa",
+  },
+  dateBoxSelected: {
+    backgroundColor: "#6C63FF",
+    borderColor: "#6C63FF",
+  },
+  dateDay: {
+    fontSize: 12,
+    color: "#666",
+    fontWeight: "500",
+  },
+  dateDaySelected: {
+    color: "#fff",
+  },
+  dateNum: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#111",
+    marginTop: 4,
+  },
+  dateNumSelected: {
+    color: "#fff",
+  },
+  // Time Slots
   timeRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 10 },
   timeBox: {
     paddingVertical: 10,
@@ -314,6 +544,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 20,
     alignItems: "center",
+  },
+  bookButtonDisabled: {
+    backgroundColor: "#ccc",
   },
   bookButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
 });
