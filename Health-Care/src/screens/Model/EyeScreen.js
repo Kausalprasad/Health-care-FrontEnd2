@@ -1,386 +1,679 @@
-import { useState } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import {
   View,
   Text,
   TouchableOpacity,
   Image,
-  ActivityIndicator,
-  ScrollView,
   StyleSheet,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
   SafeAreaView,
   StatusBar,
-  Alert,
   Dimensions,
   Modal,
+  Animated,
+  Platform,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import * as ImagePicker from "expo-image-picker"
-import { BASE_URL } from "../../config/config"
+import { CameraView, useCameraPermissions } from "expo-camera"
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator'
+import * as Font from 'expo-font'
+import Svg, { Circle } from 'react-native-svg'
 
-const { width } = Dimensions.get("window")
+const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 
-export default function EyeScreen({ navigation }) {
-  const [photo, setPhoto] = useState(null)
-  const [loading, setLoading] = useState(false)
+const { width, height } = Dimensions.get("window")
+
+// Updated API URL for Eye
+const API_URL = "https://gmu4em2cfot4a4cq5yt3l46doa0yfsel.lambda-url.ap-south-1.on.aws/analyze"
+
+const EyeScreen = ({ navigation }) => {
+  const [imageUri, setImageUri] = useState(null)
   const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [loadingProgress, setLoadingProgress] = useState(0)
   const [showImageOptions, setShowImageOptions] = useState(false)
-const getPermissions = async (type = 'camera') => {
-  try {
-    if (type === 'camera') {
-      const cameraPermission = await ImagePicker.getCameraPermissionsAsync()
-      if (cameraPermission.status !== 'granted') {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync()
-        if (status !== 'granted') {
-          Alert.alert(
-            'Camera Permission Required',
-            'Please enable camera permission from device settings to take photos.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'OK' }
-            ]
-          )
-          return false
-        }
-      }
-    } else {
-      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync()
-      if (mediaPermission.status !== 'granted') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-        if (status !== 'granted') {
-          Alert.alert(
-            'Gallery Permission Required',
-            'Please enable gallery permission from device settings to select photos.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'OK' }
-            ]
-          )
-          return false
-        }
+  const [showCamera, setShowCamera] = useState(false)
+  const [permission, requestPermission] = useCameraPermissions()
+  const [fontsLoaded, setFontsLoaded] = useState(false)
+  const cameraRef = useRef(null)
+  
+  // Animation for guide box
+  const pulseAnim = useRef(new Animated.Value(1)).current
+  const progressAnim = useRef(new Animated.Value(0)).current
+  const circleAnim = useRef(new Animated.Value(0)).current
+  const [guideColor, setGuideColor] = useState("#FFD700")
+  const [cameraFacing, setCameraFacing] = useState("front")
+  const [countdown, setCountdown] = useState(null)
+  const autoClickTimerRef = useRef(null)
+  const progressIntervalRef = useRef(null)
+
+  // Load fonts
+  useEffect(() => {
+    async function loadFonts() {
+      try {
+        await Font.loadAsync({
+          'Ionicons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+        })
+        setFontsLoaded(true)
+      } catch (error) {
+        console.log('Font loading error:', error)
+        setFontsLoaded(true)
       }
     }
-    return true
-  } catch (error) {
-    console.error('Permission error:', error)
-    return false
+    loadFonts()
+  }, [])
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start()
+  }, [])
+
+  // Auto-capture after 5 seconds when camera opens
+  useEffect(() => {
+    if (showCamera) {
+      startAutoCapture()
+    } else {
+      cancelAutoCapture()
+    }
+    
+    return () => {
+      cancelAutoCapture()
+    }
+  }, [showCamera])
+
+  // Animate progress bar
+  useEffect(() => {
+    if (loading) {
+      Animated.timing(progressAnim, {
+        toValue: loadingProgress,
+        duration: 300,
+        useNativeDriver: false,
+      }).start()
+      
+      // Animate circular progress
+      Animated.timing(circleAnim, {
+        toValue: loadingProgress,
+        duration: 300,
+        useNativeDriver: false,
+      }).start()
+    } else {
+      progressAnim.setValue(0)
+      circleAnim.setValue(0)
+    }
+  }, [loadingProgress, loading])
+
+  const startProgressSimulation = () => {
+    setLoadingProgress(0)
+    let progress = 0
+    
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+    }
+    
+    progressIntervalRef.current = setInterval(() => {
+      progress += Math.random() * 15 + 5
+      
+      if (progress >= 90) {
+        progress = 90
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current)
+        }
+      }
+      
+      setLoadingProgress(Math.min(progress, 90))
+    }, 400)
   }
-}
 
-// ✅ Fixed pickImage function
-const pickImage = async (fromCamera = false) => {
-  try {
-    console.log(`Eye ${fromCamera ? 'Camera' : 'Gallery'} selected`)
+  const completeProgress = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+    }
+    setLoadingProgress(100)
+    
+    setTimeout(() => {
+      setLoadingProgress(0)
+    }, 500)
+  }
 
-    // Get permissions
-    const hasPermission = await getPermissions(fromCamera ? 'camera' : 'gallery')
-    if (!hasPermission) {
+  const getPermissions = async (type = 'camera') => {
+    try {
+      if (type === 'camera') {
+        if (!permission) {
+          return false
+        }
+        if (!permission.granted) {
+          const result = await requestPermission()
+          return result.granted
+        }
+        return true
+      } else {
+        const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync()
+        if (mediaPermission.status !== 'granted') {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+          if (status !== 'granted') {
+            Alert.alert(
+              'Gallery Permission Required',
+              'Please enable gallery permission from device settings to select photos.'
+            )
+            return false
+          }
+        }
+      }
+      return true
+    } catch (error) {
+      console.error('Permission error:', error)
+      return false
+    }
+  }
+
+  const openCameraWithGuide = async () => {
+    const hasPermission = await getPermissions('camera')
+    if (hasPermission) {
+      setShowCamera(true)
       setShowImageOptions(false)
+      setGuideColor("#FFD700")
+      setCountdown(null)
+    }
+  }
+
+  const startAutoCapture = () => {
+    cancelAutoCapture()
+    
+    setCountdown(5)
+    let count = 5
+    
+    const countdownInterval = setInterval(() => {
+      count -= 1
+      setCountdown(count)
+      
+      if (count === 3) {
+        setGuideColor("#FFA500")
+      }
+      if (count === 1) {
+        setGuideColor("#4CAF50")
+      }
+      
+      if (count <= 0) {
+        clearInterval(countdownInterval)
+        setCountdown(0)
+      }
+    }, 1000)
+    
+    autoClickTimerRef.current = setTimeout(() => {
+      clearInterval(countdownInterval)
+      takePicture()
+    }, 5000)
+  }
+
+  const cancelAutoCapture = () => {
+    if (autoClickTimerRef.current) {
+      clearTimeout(autoClickTimerRef.current)
+      autoClickTimerRef.current = null
+    }
+    setCountdown(null)
+    setGuideColor("#FFD700")
+  }
+
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        cancelAutoCapture()
+        
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+        })
+        
+        console.log('Photo taken:', photo.uri)
+        
+        try {
+          const croppedPhoto = await cropImageToGuideBox(photo.uri)
+          setImageUri(croppedPhoto)
+          setShowCamera(false)
+          setResult(null)
+          
+          setTimeout(() => {
+            sendToBackend({ uri: croppedPhoto })
+          }, 300)
+        } catch (cropError) {
+          console.log('Crop failed, using original image:', cropError)
+          setImageUri(photo.uri)
+          setShowCamera(false)
+          setResult(null)
+          
+          setTimeout(() => {
+            sendToBackend({ uri: photo.uri })
+          }, 300)
+        }
+      } catch (error) {
+        console.error('Error taking picture:', error)
+        Alert.alert('Error', 'Failed to take photo. Please try again.')
+      }
+    }
+  }
+
+const cropImageToGuideBox = async (imageUri) => {
+    try {
+      // Image ka original size le lo
+      const getImageSize = () =>
+        new Promise((resolve, reject) => {
+          Image.getSize(
+            imageUri,
+            (width, height) => resolve({ width, height }),
+            (error) => reject(error)
+          );
+        });
+
+      const { width: imgWidth, height: imgHeight } = await getImageSize();
+      console.log('Original image size:', imgWidth, imgHeight);
+
+      // Guide box ka size (screen center me 280x280)
+      const guideBoxSize = 280;
+      const guideBoxRatio = guideBoxSize / width;
+
+      // Image me guide box ka actual size calculate karo
+      const cropSize = Math.min(imgWidth, imgHeight) * guideBoxRatio;
+
+      // Center se crop karne ke liye origin calculate karo
+      const originX = (imgWidth - cropSize) / 2;
+      const originY = (imgHeight - cropSize) / 2;
+
+      console.log('Crop parameters:', { originX, originY, cropSize });
+
+      // Image crop aur resize karo
+      const croppedImage = await manipulateAsync(
+        imageUri,
+        [
+          {
+            crop: {
+              originX: Math.max(0, originX),
+              originY: Math.max(0, originY),
+              width: cropSize,
+              height: cropSize,
+            },
+          },
+          {
+            resize: {
+              width: 512,
+              height: 512,
+            },
+          },
+        ],
+        { compress: 0.8, format: SaveFormat.JPEG }
+      );
+
+      console.log('Image cropped successfully:', croppedImage.uri);
+      return croppedImage.uri;
+    } catch (error) {
+      console.error('Crop error:', error);
+      throw error;
+    }
+  };
+
+  const toggleCameraFacing = () => {
+    setCameraFacing(current => (current === "back" ? "front" : "back"))
+    cancelAutoCapture()
+    startAutoCapture()
+  }
+
+  const pickPhoto = async (fromCamera = false) => {
+    try {
+      if (fromCamera) {
+        await openCameraWithGuide()
+        return
+      }
+
+      const hasPermission = await getPermissions('gallery')
+      if (!hasPermission) {
+        setShowImageOptions(false)
+        return
+      }
+
+      const options = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: false,
+        exif: false,
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync(options)
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0]
+        setImageUri(asset.uri)
+        setResult(null)
+        setShowImageOptions(false)
+        
+        setTimeout(() => {
+          sendToBackend(asset)
+        }, 300)
+      } else {
+        setShowImageOptions(false)
+      }
+    } catch (error) {
+      console.error('Image picker error:', error)
+      setShowImageOptions(false)
+      Alert.alert('Error', 'Failed to select image. Please try again.')
+    }
+  }
+
+  const sendToBackend = async (asset) => {
+    if (!asset && !imageUri) {
+      Alert.alert("Error", "Please select a photo first!")
       return
     }
 
-    const options = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8, // Optimize for network
-      base64: false,
-      exif: false,
-    }
+    const imageSource = asset?.uri || imageUri
+    console.log('Sending to backend:', imageSource)
 
-    console.log('Launching eye image picker...')
-
-    let result
-    if (fromCamera) {
-      result = await ImagePicker.launchCameraAsync(options)
-    } else {
-      result = await ImagePicker.launchImageLibraryAsync(options)
-    }
-
-    console.log('Eye image picker result:', {
-      canceled: result.canceled,
-      hasAssets: !!result.assets,
-      assetsLength: result.assets?.length
-    })
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      const asset = result.assets[0]
-      console.log('Eye image selected:', {
-        uri: asset.uri,
-        width: asset.width,
-        height: asset.height,
-        fileSize: asset.fileSize
+    setLoading(true)
+    startProgressSimulation()
+    
+    try {
+      const formData = new FormData()
+      const uriParts = imageSource.split('.')
+      const fileType = uriParts[uriParts.length - 1].toLowerCase()
+      const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg'
+      
+      // Fix: Use 'file' instead of 'image' as the field name
+      formData.append('file', {
+        uri: Platform.OS === 'android' ? imageSource : imageSource.replace('file://', ''),
+        name: `eye_${Date.now()}.jpg`,
+        type: 'image/jpeg',
       })
 
-      setPhoto(asset.uri)
-      setResult(null)
-      setShowImageOptions(false)
+      console.log('FormData prepared, sending request...')
+
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+
+      console.log('Response status:', response.status)
       
-      // Auto analyze with delay
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.log('Error response:', errorText)
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('API Response:', data)
+
+      if (data && data.success) {
+        completeProgress()
+        setTimeout(() => {
+          setResult(data)
+        }, 500)
+      } else {
+        throw new Error('Empty or invalid response from server')
+      }
+
+    } catch (error) {
+      console.error('API Error:', error)
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+      }
+      Alert.alert('Analysis Failed', 'Unable to analyze image. Please try again.')
+      setResult({ error: 'Analysis failed' })
+    } finally {
       setTimeout(() => {
-        uploadImage(asset)
-      }, 300)
-    } else {
-      console.log('Eye image picker canceled')
-      setShowImageOptions(false)
+        setLoading(false)
+      }, 500)
     }
-  } catch (error) {
-    console.error('Eye image picker error:', error)
-    setShowImageOptions(false)
-    Alert.alert(
-      'Error', 
-      `Failed to ${fromCamera ? 'take photo' : 'select image'}. Please try again.`
-    )
   }
-}
+  const renderValue = (value, key) => {
+    if (value === null || value === undefined) return null
 
-// ✅ Fixed uploadImage function
-const uploadImage = async (asset) => {
-  if (!asset && !photo) {
-    Alert.alert("Error", "Please select a photo first!")
-    return
-  }
-
-  const imageSource = asset?.uri || photo
-  console.log('Uploading eye image to backend:', imageSource)
-  console.log('Eye API Endpoint:', `${BASE_URL}/api/predict/eye`)
-
-  setLoading(true)
-  setResult(null)
-  
-  try {
-    // Create FormData
-    const formData = new FormData()
-    
-    // File extension and MIME type
-    const uriParts = imageSource.split('.')
-    const fileType = uriParts[uriParts.length - 1].toLowerCase()
-    const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg'
-    
-    console.log('Eye file info:', { fileType, mimeType })
-
-    // Append file to FormData (using "image" as per eye API)
-    formData.append('image', {
-      uri: imageSource,
-      name: `eye_${Date.now()}.${fileType}`,
-      type: mimeType,
-    })
-
-    console.log('Making eye analysis API request...')
-
-    // API call WITHOUT Content-Type header (let FormData handle it)
-    const response = await fetch(`${BASE_URL}/api/predict/eye`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Accept': 'application/json',
-        // DON'T set Content-Type for FormData
-      },
-    })
-
-    console.log('Eye API response status:', response.status)
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    // Handle the new eye API response format
+    if (key === 'eye_summary') {
+      return (
+        <View key={key} style={styles.diseaseSection}>
+          <Text style={styles.resultSectionTitle}>Eye Summary:</Text>
+          <Text style={styles.resultDetailText}>{value}</Text>
+        </View>
+      )
     }
 
-    const data = await response.json()
-    console.log('Eye API Response:', JSON.stringify(data, null, 2))
-
-    if (data) {
-      setResult(data)
-    } else {
-      throw new Error('Empty response from eye analysis server')
+    if (key === 'main_findings' && Array.isArray(value)) {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Main Findings:</Text>
+          {value.map((item, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Ionicons name="ellipse" size={6} color="#7475B4" style={{ marginTop: 8, marginRight: 8 }} />
+              <Text style={styles.resultDetailText}>{String(item)}</Text>
+            </View>
+          ))}
+        </View>
+      )
     }
 
-  } catch (error) {
-    console.error('Eye API Error:', error)
-    
-    let errorMessage = 'Network error occurred'
-    if (error.message.includes('fetch')) {
-      errorMessage = 'Unable to connect to server. Check your internet connection.'
-    } else if (error.message.includes('HTTP error')) {
-      errorMessage = 'Server error occurred. Please try again later.'
+    if (key === 'eye_conditions' && Array.isArray(value)) {
+      return (
+        <View key={key} style={styles.diseaseSection}>
+          <Text style={styles.resultSectionTitle}>Eye Conditions:</Text>
+          {value.map((condition, index) => (
+            <View key={index} style={styles.diseaseItem}>
+              <View style={styles.diseaseHeader}>
+                <Ionicons 
+                  name="eye" 
+                  size={20} 
+                  color="#FF9800" 
+                />
+                <Text style={[styles.diseaseTitle, { color: "#FF9800" }]}>
+                  {condition.condition}
+                </Text>
+              </View>
+              
+              <View style={styles.remediesSection}>
+                <View style={styles.remedyGroup}>
+                  <Text style={styles.remedyTitle}>
+                    <Ionicons name="stats-chart" size={14} color="#7475B4" /> Severity:
+                  </Text>
+                  <Text style={[styles.remedyText, { marginLeft: 16 }]}>{condition.severity}</Text>
+                </View>
+
+                <View style={styles.remedyGroup}>
+                  <Text style={styles.remedyTitle}>
+                    <Ionicons name="pulse" size={14} color="#7475B4" /> Probability:
+                  </Text>
+                  <Text style={[styles.remedyText, { marginLeft: 16 }]}>{condition.probability}</Text>
+                </View>
+
+                {condition.why && (
+                  <View style={styles.remedyGroup}>
+                    <Text style={styles.remedyTitle}>
+                      <Ionicons name="help-circle" size={14} color="#4CAF50" /> Why:
+                    </Text>
+                    <Text style={[styles.remedyText, { marginLeft: 16 }]}>{condition.why}</Text>
+                  </View>
+                )}
+
+                {condition.treatment && (
+                  <View style={styles.remedyGroup}>
+                    <Text style={styles.remedyTitle}>
+                      <Ionicons name="medical" size={14} color="#4CAF50" /> Treatment:
+                    </Text>
+                    <Text style={[styles.remedyText, { marginLeft: 16 }]}>{condition.treatment}</Text>
+                  </View>
+                )}
+
+                {condition.when_to_see_doctor && (
+                  <View style={styles.remedyGroup}>
+                    <Text style={styles.remedyTitle}>
+                      <Ionicons name="warning" size={14} color="#FF9800" /> When to see doctor:
+                    </Text>
+                    <Text style={[styles.remedyText, { marginLeft: 16 }]}>{condition.when_to_see_doctor}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )
     }
 
-    Alert.alert('Eye Analysis Failed', errorMessage)
-    setResult({ error: errorMessage })
-  } finally {
-    setLoading(false)
-  }
-}
+    if (key === 'cosmetic_concerns' && Array.isArray(value) && value.length > 0) {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Cosmetic Concerns:</Text>
+          {value.map((item, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Ionicons name="ellipse" size={6} color="#7475B4" style={{ marginTop: 8, marginRight: 8 }} />
+              <Text style={styles.resultDetailText}>{String(item)}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
 
+    if (key === 'safety_tips' && Array.isArray(value)) {
+      return (
+        <View key={key} style={styles.diseaseSection}>
+          <Text style={styles.resultSectionTitle}>Safety Tips:</Text>
+          {value.map((tip, i) => (
+            <View key={i} style={styles.remedyItem}>
+              <Ionicons name="shield-checkmark" size={14} color="#4CAF50" style={{ marginTop: 4, marginRight: 8 }} />
+              <Text style={styles.remedyText}>{tip}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
 
-  // Helper function to get condition info
-  const getConditionInfo = (condition) => {
-    const conditions = {
-      normal: {
-        icon: "checkmark-circle",
-        color: "#4CAF50",
-        title: "Normal Eye",
-        description: "Your eye appears healthy with no visible abnormalities detected.",
-        severity: "Low Risk",
-        recommendations: [
-          "Continue regular eye check-ups",
-          "Maintain good eye hygiene",
-          "Use UV protection sunglasses",
-          "Follow healthy lifestyle habits"
-        ]
-      },
-      cataract: {
-        icon: "eye",
-        color: "#FF9800",
-        title: "Cataract Detected",
-        description: "Cataract is a clouding of the lens in your eye, which can cause vision problems.",
-        severity: "Medium Risk",
-        recommendations: [
-          "Consult an ophthalmologist",
-          "Consider surgical options if severe",
-          "Use brighter lighting when reading",
-          "Regular monitoring of vision changes"
-        ]
-      },
-      glaucoma: {
-        icon: "warning",
-        color: "#F44336",
-        title: "Glaucoma Suspected",
-        description: "Glaucoma is a serious eye condition that can lead to vision loss if untreated.",
-        severity: "High Risk",
-        recommendations: [
-          "Seek immediate medical attention",
-          "Regular eye pressure monitoring",
-          "Follow prescribed treatment plan",
-          "Avoid activities that increase eye pressure"
-        ]
-      },
-      "diabetic retinopathy": {
-        icon: "medical",
-        color: "#E91E63",
-        title: "Diabetic Retinopathy",
-        description: "A diabetes complication that affects eyes, caused by damage to blood vessels.",
-        severity: "High Risk",
-        recommendations: [
-          "Immediate consultation with eye specialist",
-          "Better diabetes management",
-          "Regular retinal examinations",
-          "Monitor blood sugar levels closely"
-        ]
-      },
-      eyelid: {
-        icon: "eye-outline",
-        color: "#3F51B5",
-        title: "Eyelid Condition",
-        description: "Issues with the eyelid such as swelling, infection, or drooping may be present.",
-        severity: "Medium Risk",
-        recommendations: [
-          "Apply warm compresses",
-          "Maintain eyelid hygiene",
-          "Consult doctor if symptoms persist",
-          "Avoid rubbing or touching eyes"
-        ]
-      },
-      conjunctivitis: {
-        icon: "eyedrop",
-        color: "#9C27B0",
-        title: "Conjunctivitis",
-        description: "Also known as pink eye, it causes redness, itching, and discharge due to infection or allergies.",
-        severity: "Medium Risk",
-        recommendations: [
-          "Use prescribed eye drops",
-          "Maintain good hand hygiene",
-          "Avoid touching or rubbing eyes",
-          "Replace contact lenses if used"
-        ]
-      },
+    if (key === 'home_remedies' && Array.isArray(value)) {
+      return (
+        <View key={key} style={styles.diseaseSection}>
+          <Text style={styles.resultSectionTitle}>Home Remedies:</Text>
+          {value.map((remedy, i) => (
+            <View key={i} style={styles.remedyItem}>
+              <Ionicons name="leaf" size={14} color="#4CAF50" style={{ marginTop: 4, marginRight: 8 }} />
+              <Text style={styles.remedyText}>{remedy}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'severity_level') {
+      const severityColor = value === 'mild' ? '#4CAF50' : value === 'moderate' ? '#FF9800' : '#F44336'
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Severity Level:</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+            <Ionicons name="pulse" size={16} color={severityColor} />
+            <Text style={[styles.resultDetailText, { color: severityColor, fontWeight: '600', marginLeft: 8 }]}>
+              {String(value).toUpperCase()}
+            </Text>
+          </View>
+        </View>
+      )
+    }
+
+    if (key === 'see_doctor_urgently') {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons 
+              name={value ? "medical" : "checkmark-circle"} 
+              size={16} 
+              color={value ? "#FF9800" : "#4CAF50"} 
+            />
+            <Text style={[styles.resultDetailText, { marginLeft: 8, fontWeight: '600' }]}>
+              {value ? "Urgent consultation with doctor recommended" : "No urgent consultation needed"}
+            </Text>
+          </View>
+        </View>
+      )
+    }
+
+    // Skip these keys from rendering
+    if (key === 'success' || key === 'note' || key === 'patient_input' || key === 'tokens_used') {
+      return null
+    }
+
+    // Default rendering for other fields
+    if (Array.isArray(value)) {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>{key.replace(/_/g, ' ').toUpperCase()}:</Text>
+          {value.map((item, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Ionicons name="ellipse" size={6} color="#7475B4" style={{ marginTop: 8, marginRight: 8 }} />
+              <Text style={styles.resultDetailText}>{String(item)}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (typeof value === "object") {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>{key.replace(/_/g, ' ').toUpperCase()}:</Text>
+          {Object.entries(value).map(([subKey, subValue]) => (
+            <View key={subKey} style={{ marginLeft: 16, marginTop: 6 }}>
+              <Text style={styles.resultDetailText}>
+                <Text style={{ fontWeight: "700", color: "#7475B4" }}>
+                  {subKey.replace(/_/g, ' ')}:
+                </Text>
+                {" "}
+                <Text style={{ color: "#333" }}>{String(subValue)}</Text>
+              </Text>
+            </View>
+          ))}
+        </View>
+      )
     }
 
     return (
-      conditions[condition?.toLowerCase()] || {
-        icon: "help-circle",
-        color: "#9E9E9E",
-        title: "Unknown Condition",
-        description: "The analysis result is unclear. Please consult with an eye specialist.",
-        severity: "Unknown",
-        recommendations: [
-          "Consult an eye specialist",
-          "Get comprehensive eye examination",
-          "Monitor any changes in vision"
-        ]
-      }
+      <View key={key} style={{ marginTop: 12 }}>
+        <Text style={styles.resultSectionTitle}>{key.replace(/_/g, ' ').toUpperCase()}:</Text>
+        <Text style={[styles.resultDetailText, { marginTop: 4 }]}>{String(value)}</Text>
+      </View>
     )
   }
 
-  const conditionInfo = result?.predicted_class ? getConditionInfo(result.predicted_class) : null
-
   const renderResult = () => {
-    if (!result || result.error) return null
-    
+    if (!result) return null
     return (
       <View style={styles.resultCard}>
         <View style={styles.resultHeader}>
-          <Ionicons name="medical" size={32} color="#7475B4" />
-          <Text style={styles.resultTitle}>Analysis Result</Text>
+          <Ionicons name="eye" size={32} color="#7475B4" />
+          <Text style={styles.resultTitle}>Eye Analysis Report</Text>
         </View>
-        
         <View style={styles.resultContent}>
-          {/* Main Condition */}
-          <View style={styles.conditionSection}>
-            <Text style={styles.resultSectionTitle}>Condition:</Text>
-            <Text style={styles.resultDetailText}>{conditionInfo.title}</Text>
-          </View>
-
-          {/* Description */}
-          <View style={styles.conditionSection}>
-            <Text style={styles.resultSectionTitle}>Description:</Text>
-            <Text style={styles.resultDetailText}>{conditionInfo.description}</Text>
-          </View>
-
-          {/* Severity */}
-          <View style={styles.conditionSection}>
-            <Text style={styles.resultSectionTitle}>Risk Level:</Text>
-            <Text style={[styles.resultDetailText, { color: conditionInfo.color, fontWeight: '600' }]}>
-              {conditionInfo.severity}
+          {Object.entries(result).map(([key, value]) => renderValue(value, key))}
+          
+          <View style={styles.disclaimerBox}>
+            <Ionicons name="shield-checkmark-outline" size={20} color="#FF9800" />
+            <Text style={styles.disclaimerText}>
+              {result.note || "This analysis is for informational purposes only. Please consult a healthcare professional for proper medical advice and diagnosis."}
             </Text>
           </View>
-
-          {/* Confidence */}
-          {result.confidence && (
-            <View style={styles.conditionSection}>
-              <Text style={styles.resultSectionTitle}>Confidence:</Text>
-              <Text style={styles.resultDetailText}>{(result.confidence).toFixed(1)}%</Text>
-            </View>
-          )}
-
-          {/* Recommendations */}
-          <View style={styles.conditionSection}>
-            <Text style={styles.resultSectionTitle}>Recommendations:</Text>
-            {conditionInfo.recommendations.map((rec, index) => (
-              <View key={index} style={styles.bulletRow}>
-                <Ionicons
-                  name="ellipse"
-                  size={6}
-                  color="#7475B4"
-                  style={{ marginTop: 8, marginRight: 8 }}
-                />
-                <Text style={styles.resultDetailText}>{rec}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Emergency notice for serious conditions */}
-          {["glaucoma", "diabetic retinopathy"].includes(result.predicted_class?.toLowerCase()) && (
-            <View style={styles.urgentNotice}>
-              <Ionicons name="warning" size={16} color="#F44336" />
-              <Text style={styles.urgentText}>
-                This condition requires immediate medical attention!
-              </Text>
-            </View>
-          )}
-
-          <Text style={styles.recommendationText}>
-            ⚠️ This analysis is for informational purposes only. Please consult an ophthalmologist for professional diagnosis and treatment.
-          </Text>
         </View>
-
         <TouchableOpacity
           style={styles.newAnalysisButton}
           onPress={() => setShowImageOptions(true)}
@@ -393,15 +686,22 @@ const uploadImage = async (asset) => {
     )
   }
 
+  if (!fontsLoaded) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#7475B4" />
+      </View>
+    )
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <StatusBar barStyle="light-content" backgroundColor="#7475B4" />
       
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation?.goBack()}
+          onPress={() => navigation.goBack()}
         >
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -410,27 +710,26 @@ const uploadImage = async (asset) => {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Info Card */}
         <View style={styles.infoCard}>
           <View style={styles.infoHeader}>
             <Ionicons name="information-circle" size={24} color="#7475B4" />
             <Text style={styles.infoTitle}>How it works</Text>
           </View>
           <Text style={styles.infoText}>
-            Our AI analyzes your eye image to detect possible signs of various eye conditions. 
-            For best results, take a clear photo in good lighting with your eye wide open and clearly visible.
+            Our AI analyzes your eye image to detect possible signs of
+            various eye conditions. For best results, take a clear photo in
+            good lighting with your eye wide open.
           </Text>
         </View>
 
-        {/* Upload Section */}
-        {!photo ? (
+        {!imageUri ? (
           <View style={styles.uploadSection}>
             <View style={styles.uploadIconContainer}>
               <Ionicons name="eye-outline" size={64} color="#7475B4" />
             </View>
             <Text style={styles.uploadTitle}>Upload Your Eye Photo</Text>
             <Text style={styles.uploadSubtitle}>
-              Take a clear photo of your eye or choose from gallery
+              Photo will be automatically captured after 5 seconds
             </Text>
 
             <TouchableOpacity
@@ -438,7 +737,12 @@ const uploadImage = async (asset) => {
               onPress={() => setShowImageOptions(true)}
               activeOpacity={0.8}
             >
-              <View style={[styles.uploadButtonGradient, { backgroundColor: "#7475B4" }]}>
+              <View
+                style={[
+                  styles.uploadButtonGradient,
+                  { backgroundColor: "#7475B4" },
+                ]}
+              >
                 <Ionicons name="add" size={24} color="#fff" />
                 <Text style={styles.uploadButtonText}>Select Photo</Text>
               </View>
@@ -448,7 +752,7 @@ const uploadImage = async (asset) => {
           <View style={styles.imageSection}>
             <Text style={styles.sectionTitle}>Uploaded Image</Text>
             <View style={styles.imageContainer}>
-              <Image source={{ uri: photo }} style={styles.image} />
+              <Image source={{ uri: imageUri }} style={styles.image} />
               <TouchableOpacity
                 style={styles.changeImageButton}
                 onPress={() => setShowImageOptions(true)}
@@ -461,43 +765,97 @@ const uploadImage = async (asset) => {
           </View>
         )}
 
-        {/* Loading */}
         {loading && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#7475B4" />
+            <View style={styles.circularProgressContainer}>
+              <Svg width={200} height={200} style={styles.circularProgress}>
+                <Circle
+                  cx="100"
+                  cy="100"
+                  r="85"
+                  stroke="#E8E8F0"
+                  strokeWidth="12"
+                  fill="none"
+                />
+                
+                <AnimatedCircle
+                  cx="100"
+                  cy="100"
+                  r="85"
+                  stroke="#7475B4"
+                  strokeWidth="12"
+                  fill="none"
+                  strokeDasharray={`${2 * Math.PI * 85}`}
+                  strokeDashoffset={circleAnim.interpolate({
+                    inputRange: [0, 100],
+                    outputRange: [2 * Math.PI * 85, 0],
+                  })}
+                  strokeLinecap="round"
+                  transform="rotate(-90 100 100)"
+                />
+              </Svg>
+              
+              <View style={styles.circularProgressCenter}>
+                <Ionicons name="eye" size={48} color="#7475B4" />
+                <Text style={styles.circularPercentageText}>
+                  {Math.round(loadingProgress)}%
+                </Text>
+              </View>
+            </View>
+            
             <Text style={styles.loadingText}>Analyzing your eye photo...</Text>
-            <Text style={styles.loadingSubtext}>This may take a few seconds</Text>
+            <Text style={styles.loadingSubtext}>
+              AI is processing your image
+            </Text>
+
+            <View style={styles.stepsContainer}>
+              <View style={styles.stepItem}>
+                <Ionicons 
+                  name={loadingProgress >= 30 ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={loadingProgress >= 30 ? "#4CAF50" : "#ccc"} 
+                />
+                <Text style={[
+                  styles.stepText,
+                  { color: loadingProgress >= 30 ? "#4CAF50" : "#999" }
+                ]}>
+                  Image Uploaded
+                </Text>
+              </View>
+
+              <View style={styles.stepItem}>
+                <Ionicons 
+                  name={loadingProgress >= 60 ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={loadingProgress >= 60 ? "#4CAF50" : "#ccc"} 
+                />
+                <Text style={[
+                  styles.stepText,
+                  { color: loadingProgress >= 60 ? "#4CAF50" : "#999" }
+                ]}>
+                  AI Processing
+                </Text>
+              </View>
+
+              <View style={styles.stepItem}>
+                <Ionicons 
+                  name={loadingProgress >= 90 ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={loadingProgress >= 90 ? "#4CAF50" : "#ccc"} 
+                />
+                <Text style={[
+                  styles.stepText,
+                  { color: loadingProgress >= 90 ? "#4CAF50" : "#999" }
+                ]}>
+                  Generating Results
+                </Text>
+              </View>
+            </View>
           </View>
         )}
 
-        {/* Result */}
         {renderResult()}
 
-        {/* Error State */}
-        {result?.error && (
-          <View style={styles.errorCard}>
-            <View style={styles.errorIcon}>
-              <Ionicons name="warning-outline" size={32} color="#FF5722" />
-            </View>
-            <Text style={styles.errorTitle}>Analysis Failed</Text>
-            <Text style={styles.errorText}>{result.error}</Text>
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={() => {
-                setResult(null)
-                setPhoto(null)
-              }}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.uploadButtonGradient, { backgroundColor: "#F44336" }]}>
-                <Ionicons name="refresh" size={16} color="#fff" />
-                <Text style={styles.uploadButtonText}>Try Again</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Tips Section */}
         <View style={styles.tipsCard}>
           <View style={styles.tipsHeader}>
             <Ionicons name="bulb" size={24} color="#FF9800" />
@@ -514,17 +872,117 @@ const uploadImage = async (asset) => {
             </View>
             <View style={styles.tipItem}>
               <Ionicons name="checkmark-circle" size={16} color="#7475B4" />
-              <Text style={styles.tipText}>Fill the frame with your eye area</Text>
+              <Text style={styles.tipText}>Photo will be captured automatically after 5 seconds</Text>
             </View>
             <View style={styles.tipItem}>
               <Ionicons name="checkmark-circle" size={16} color="#7475B4" />
-              <Text style={styles.tipText}>Hold camera steady and avoid shadows</Text>
+              <Text style={styles.tipText}>Position your eye inside the guide box</Text>
             </View>
           </View>
         </View>
       </ScrollView>
 
-      {/* Modal for Photo Options */}
+      {/* Camera Modal with Guide Overlay */}
+      <Modal
+        visible={showCamera}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => {
+          cancelAutoCapture()
+          setShowCamera(false)
+        }}
+      >
+        <View style={styles.cameraContainer}>
+          {permission?.granted && (
+            <CameraView
+              ref={cameraRef}
+              style={styles.camera}
+              facing={cameraFacing}
+            >
+              {/* Guide Overlay */}
+              <View style={styles.guideOverlay}>
+                <View style={styles.darkArea} />
+                
+                <View style={styles.middleRow}>
+                  <View style={styles.darkAreaSide} />
+                  
+                  <Animated.
+                  View 
+                    style={[
+                      styles.guideBox,
+                      {
+                        borderColor: guideColor,
+                        transform: [{ scale: pulseAnim }]
+                      }
+                    ]}
+                  >
+                    <View style={[styles.corner, styles.topLeft, { borderColor: guideColor }]} />
+                    <View style={[styles.corner, styles.topRight, { borderColor: guideColor }]} />
+                    <View style={[styles.corner, styles.bottomLeft, { borderColor: guideColor }]} />
+                    <View style={[styles.corner, styles.bottomRight, { borderColor: guideColor }]} />
+                    
+                    <View style={styles.instructionContainer}>
+                      <Ionicons 
+                        name="eye-outline" 
+                        size={40} 
+                        color={guideColor} 
+                      />
+                      <Text style={[styles.instructionText, { color: guideColor }]}>
+                        Position eye inside the frame
+                      </Text>
+                      
+                      {countdown !== null && countdown > 0 && (
+                        <View style={styles.countdownCircle}>
+                          <Text style={styles.countdownText}>{countdown}</Text>
+                        </View>
+                      )}
+                      
+                      {countdown === 0 && (
+                        <Text style={[styles.instructionText, { color: "#4CAF50", marginTop: 15 }]}>
+                          Capturing...
+                        </Text>
+                      )}
+                    </View>
+                  </Animated.View>
+                  
+                  <View style={styles.darkAreaSide} />
+                </View>
+                
+                <View style={styles.darkArea} />
+              </View>
+
+              <View style={styles.cameraControls}>
+                <TouchableOpacity
+                  style={styles.closeCamera}
+                  onPress={() => {
+                    cancelAutoCapture()
+                    setShowCamera(false)
+                  }}
+                >
+                  <Ionicons name="close" size={32} color="#fff" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.captureButton}
+                  onPress={takePicture}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.captureButtonInner} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.flipCamera}
+                  onPress={toggleCameraFacing}
+                >
+                  <Ionicons name="camera-reverse" size={32} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </CameraView>
+          )}
+        </View>
+      </Modal>
+
+      {/* Image Options Modal */}
       <Modal
         visible={showImageOptions}
         transparent={true}
@@ -542,7 +1000,7 @@ const uploadImage = async (asset) => {
 
             <TouchableOpacity
               style={styles.optionButton}
-              onPress={() => pickImage(true)}
+              onPress={() => pickPhoto(true)}
               activeOpacity={0.8}
             >
               <View style={[styles.optionIcon, { backgroundColor: "#E3F2FD" }]}>
@@ -550,14 +1008,16 @@ const uploadImage = async (asset) => {
               </View>
               <View style={styles.optionText}>
                 <Text style={styles.optionTitle}>Take Photo</Text>
-                <Text style={styles.optionSubtitle}>Use camera to capture eye photo</Text>
+                <Text style={styles.optionSubtitle}>
+                  Auto-capture after 5 seconds
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#ccc" />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.optionButton}
-              onPress={() => pickImage(false)}
+              onPress={() => pickPhoto(false)}
               activeOpacity={0.8}
             >
               <View style={[styles.optionIcon, { backgroundColor: "#E8F5E8" }]}>
@@ -565,7 +1025,9 @@ const uploadImage = async (asset) => {
               </View>
               <View style={styles.optionText}>
                 <Text style={styles.optionTitle}>Choose from Gallery</Text>
-                <Text style={styles.optionSubtitle}>Select existing photo from gallery</Text>
+                <Text style={styles.optionSubtitle}>
+                  Select existing photo from gallery
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#ccc" />
             </TouchableOpacity>
@@ -592,20 +1054,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
     backgroundColor: "#7475B4",
   },
-  backButton: { 
-    padding: 8 
-  },
+  backButton: { padding: 8 },
   headerTitle: { 
     fontSize: 18, 
     fontWeight: "600", 
-    color: "#fff" 
+    color: "#fff",
   },
-  placeholder: { 
-    width: 40 
-  },
+  placeholder: { width: 40 },
   content: {
     flex: 1,
     paddingHorizontal: 20,
@@ -617,7 +1077,12 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 25,
     borderWidth: 1,
-    borderColor: "#E0E0E0",
+    borderColor: "#E8E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   infoHeader: {
     flexDirection: "row",
@@ -626,7 +1091,7 @@ const styles = StyleSheet.create({
   },
   infoTitle: {
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#7475B4",
     marginLeft: 10,
   },
@@ -642,20 +1107,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 25,
     borderWidth: 1,
-    borderColor: "#E0E0E0",
+    borderColor: "#E8E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   uploadIconContainer: {
     width: 120,
     height: 120,
-    borderRadius: 100,
-    backgroundColor: "rgba(116, 117, 180, 0.1)",
+    borderRadius: 60,
+    backgroundColor: "#F8F9FF",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 20,
+    borderWidth: 2,
+    borderColor: "#E8E8F0",
+    borderStyle: "dashed",
   },
   uploadTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
+    fontSize: 17,
+    fontWeight: "600",
     color: "#333",
     marginBottom: 8,
   },
@@ -669,6 +1142,11 @@ const styles = StyleSheet.create({
   uploadButton: {
     borderRadius: 15,
     overflow: "hidden",
+    shadowColor: "#7475B4",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   uploadButtonGradient: {
     flexDirection: "row",
@@ -688,7 +1166,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#333",
     marginBottom: 15,
   },
@@ -702,6 +1180,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    borderWidth: 1,
+    borderColor: "#E8E8F0",
   },
   image: {
     width: width - 80,
@@ -734,6 +1214,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    borderWidth: 1,
+    borderColor: "#E8E8F0",
+  },
+  circularProgressContainer: {
+    width: 200,
+    height: 200,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 25,
+  },
+  circularProgress: {
+    position: "absolute",
+  },
+  circularProgressCenter: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  circularPercentageText: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "#7475B4",
+    marginTop: 10,
   },
   loadingText: {
     fontSize: 16,
@@ -745,6 +1247,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
     marginTop: 5,
+    marginBottom: 20,
+  },
+  stepsContainer: {
+    width: "100%",
+    marginTop: 25,
+    paddingHorizontal: 10,
+  },
+  stepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  stepText: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginLeft: 10,
   },
   resultCard: {
     backgroundColor: "#fff",
@@ -756,6 +1274,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    borderWidth: 1,
+    borderColor: "#E8E8F0",
   },
   resultHeader: {
     flexDirection: "row",
@@ -764,7 +1284,7 @@ const styles = StyleSheet.create({
   },
   resultTitle: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "700",
     color: "#333",
     marginLeft: 12,
   },
@@ -772,16 +1292,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     marginBottom: 15,
-    backgroundColor: "rgba(116, 117, 180, 0.05)",
-  },
-  conditionSection: {
-    marginBottom: 15,
+    backgroundColor: "#F8F9FF",
+    borderWidth: 1,
+    borderColor: "#F0F0F8",
   },
   resultSectionTitle: {
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "700",
     color: "#7475B4",
     marginBottom: 8,
+    marginTop: 8,
   },
   resultDetailText: {
     fontSize: 14,
@@ -793,30 +1313,75 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     marginTop: 4,
+    marginBottom: 4,
   },
-  urgentNotice: {
+  diseaseSection: {
+    marginTop: 8,
+  },
+  diseaseItem: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#E8E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  diseaseHeader: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFEBEE",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 10,
+    marginBottom: 12,
   },
-  urgentText: {
-    fontSize: 14,
-    color: "#F44336",
-    fontWeight: "600",
+  diseaseTitle: {
+    fontSize: 16,
+    fontWeight: "700",
     marginLeft: 8,
+    flex: 1,
   },
-  recommendationText: {
+  remediesSection: {
+    marginTop: 8,
+  },
+  remedyGroup: {
+    marginBottom: 12,
+  },
+  remedyTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#555",
+    marginBottom: 8,
+  },
+  remedyItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 6,
+    paddingLeft: 8,
+  },
+  remedyText: {
     fontSize: 14,
-    color: "#666",
+    color: "#333",
     lineHeight: 20,
-    textAlign: "center",
+    flex: 1,
+  },
+  disclaimerBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "rgba(255, 152, 0, 0.08)",
+    borderRadius: 10,
+    padding: 15,
     marginTop: 15,
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: "#E0E0E0",
+    borderLeftWidth: 4,
+    borderLeftColor: "#FF9800",
+  },
+  disclaimerText: {
+    fontSize: 13,
+    color: "#666",
+    lineHeight: 18,
+    marginLeft: 10,
+    flex: 1,
     fontStyle: "italic",
   },
   newAnalysisButton: {
@@ -827,6 +1392,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: "rgba(116, 117, 180, 0.1)",
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(116, 117, 180, 0.2)",
   },
   newAnalysisText: {
     fontSize: 14,
@@ -834,39 +1401,18 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-  errorCard: {
-    backgroundColor: "#FFEBEE",
-    borderRadius: 15,
-    padding: 20,
-    alignItems: "center",
-    marginBottom: 25,
-  },
-  errorIcon: {
-    marginBottom: 15,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#D32F2F",
-    marginBottom: 8,
-  },
-  errorText: {
-    fontSize: 14,
-    color: "#B71C1C",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  retryButton: {
-    borderRadius: 25,
-    overflow: "hidden",
-  },
   tipsCard: {
     backgroundColor: "#fff",
     borderRadius: 15,
     padding: 20,
     marginBottom: 30,
     borderWidth: 1,
-    borderColor: "#E0E0E0",
+    borderColor: "#E8E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   tipsHeader: {
     flexDirection: "row",
@@ -875,7 +1421,7 @@ const styles = StyleSheet.create({
   },
   tipsTitle: {
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#333",
     marginLeft: 10,
   },
@@ -893,7 +1439,154 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     flex: 1,
   },
-  // Modal styles
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  camera: {
+    flex: 1,
+  },
+  guideOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  darkArea: {
+    flex: 1,
+    width: "100%",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+  },
+  middleRow: {
+    flexDirection: "row",
+    width: "100%",
+  },
+  darkAreaSide: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+  },
+  guideBox: {
+    width: 280,
+    height: 280,
+    borderWidth: 4,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "transparent",
+  },
+  corner: {
+    position: "absolute",
+    width: 40,
+    height: 40,
+    borderWidth: 5,
+  },
+  topLeft: {
+    top: -2,
+    left: -2,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 20,
+  },
+  topRight: {
+    top: -2,
+    right: -2,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+    borderTopRightRadius: 20,
+  },
+  bottomLeft: {
+    bottom: -2,
+    left: -2,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 20,
+  },
+  bottomRight: {
+    bottom: -2,
+    right: -2,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomRightRadius: 20,
+  },
+  instructionContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  instructionText: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 10,
+    textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  countdownCircle: {
+    marginTop: 20,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(116, 117, 180, 0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 4,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  countdownText: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  cameraControls: {
+    position: "absolute",
+    bottom: 40,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    paddingHorizontal: 30,
+  },
+  closeCamera: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  flipCamera: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 5,
+    borderColor: "rgba(255, 255, 255, 0.5)",
+  },
+  captureButtonInner: {
+    width: 65,
+    height: 65,
+    borderRadius: 32.5,
+    backgroundColor: "#fff",
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -915,7 +1608,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "700",
     color: "#333",
   },
   optionButton: {
@@ -962,3 +1655,5 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 })
+
+export default EyeScreen

@@ -45,10 +45,13 @@ import FeaturesScreen from "../screens/Model/FeaturesScreen";
 import XrayScreen from "../screens/Model/XrayScreen";
 import VoiceRedirectScreen from "../screens/Model/VoiceRedirectScreen";
 import CalorieCalculator from "../screens/Model/CalorieCalculator";
-import PregnancyScreen from "../screens/Model/PregnancyScreen";
 import AddDocumentScreen from "../screens/Vault/AddDocumentScreen";
 import DayDetailScreen from "../screens/Diet/DayDetailScreen";
 import DietResult from "../screens/Diet/DietResult";
+import PregnancyScreen from "../screens/Pregnancy/PregnancyScreen";
+import BabyScreen from "../screens/Pregnancy/BabyScreen";
+import MotherBabyCareScreen from "../screens/Pregnancy/MotherBabyCareScreen";
+
 
 
 
@@ -132,10 +135,13 @@ export default function AppNavigator() {
   <Stack.Screen name="XrayScreen" component={XrayScreen}/>
   <Stack.Screen name="VoiceRedirectScreen" component={VoiceRedirectScreen}/>
   <Stack.Screen name="CalorieCalculator" component={CalorieCalculator}/>
-  <Stack.Screen name="PregnancyScreen" component={PregnancyScreen}/>
+  {/* <Stack.Screen name="PregnancyScreen" component={PregnancyScreen}/> */}
   <Stack.Screen name="AddDocumentScreen" component={AddDocumentScreen}/>
   <Stack.Screen name="DayDetailScreen" component={DayDetailScreen}/>
   <Stack.Screen name="DietResult" component={DietResult}/>
+  <Stack.Screen name="PregnancyScreen" component={PregnancyScreen}/>
+  <Stack.Screen name="BabyScreen" component={BabyScreen}/>
+  <Stack.Screen name="MotherBabyCareScreen" component={MotherBabyCareScreen}/>
   </>
   
 </Stack.Navigator>

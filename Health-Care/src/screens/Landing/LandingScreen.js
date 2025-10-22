@@ -516,6 +516,7 @@ export default function LandingScreen({ navigation }) {
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const flatListRef = useRef();
 
@@ -540,6 +541,22 @@ export default function LandingScreen({ navigation }) {
         useNativeDriver: true,
       }),
     ]).start();
+
+    // Pulse animation for logo
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, []);
 
   const handleScroll = (event) => {
@@ -556,14 +573,23 @@ export default function LandingScreen({ navigation }) {
         <Animated.View
           style={[
             styles.logoWrapper,
-            { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
+            { 
+              transform: [{ scale: scaleAnim }], 
+              opacity: opacityAnim 
+            },
           ]}
         >
-          <Image
-            // source={require("../../../assets/logo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+          <Animated.View 
+            style={[
+              styles.logoIconContainer,
+              { transform: [{ scale: pulseAnim }] }
+            ]}
+          >
+            <Text style={styles.logoH}>H</Text>
+            <View style={styles.heartBeat}>
+              <Ionicons name="fitness" size={24} color="#fff" style={styles.heartIcon} />
+            </View>
+          </Animated.View>
         </Animated.View>
         <Animated.Text style={[styles.splashTitle, { opacity: opacityAnim }]}>
           HealNOVA.AI
@@ -660,11 +686,57 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 20,
-    elevation: 5,
+    elevation: 8,
+    shadowColor: "#6B5AED",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
   },
-  logo: { width: 100, height: 100 },
-  splashTitle: { fontSize: 24, fontWeight: "700", color: "#222" },
-  splashSubtitle: { fontSize: 15, color: "#333", marginTop: 5 },
+  logoIconContainer: {
+    width: 110,
+    height: 110,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#6B5AED",
+    borderRadius: 25,
+    position: "relative",
+    overflow: "visible",
+  },
+  logoH: {
+    fontSize: 70,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: 2,
+  },
+  heartBeat: {
+    position: "absolute",
+    bottom: -8,
+    right: -8,
+    width: 40,
+    height: 40,
+    backgroundColor: "#279D7D",
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: "#fff",
+    elevation: 4,
+  },
+  heartIcon: {
+    marginLeft: 2,
+  },
+  splashTitle: { 
+    fontSize: 28, 
+    fontWeight: "700", 
+    color: "#222",
+    letterSpacing: 1,
+  },
+  splashSubtitle: { 
+    fontSize: 15, 
+    color: "#333", 
+    marginTop: 8,
+    fontStyle: "italic",
+  },
 
   // Landing styles
   container: {
@@ -679,31 +751,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 60,
   },
-title: { 
-  fontSize: 28, 
-  fontWeight: "500", 
-  color: "#222", 
-  textAlign: "left",   // 👈 left align
-  alignSelf: "flex-start",  // 👈 start se lagega
-  fontFamily: "Poppins_400Regular",
-},
-subtitle: {
-  fontSize: 20,
-  color: "#555",
-  textAlign: "left",   // 👈 left align
-  alignSelf: "flex-start",  // 👈 start se lagega
-  marginTop: 8,
-  marginBottom: 10,
-  fontWeight: "500",
-  fontFamily: "Poppins_400Regular",
-},
- image: { 
-  width: 350, 
-  height: 500, 
-  resizeMode: "contain",  // 👈 image stretch na ho
-  marginTop: -40,         // 👈 upar shift kar de
-  alignSelf: "center"     // 👈 center me rahe horizontally
-},
+  title: { 
+    fontSize: 28, 
+    fontWeight: "500", 
+    color: "#222", 
+    textAlign: "left",
+    alignSelf: "flex-start",
+    fontFamily: "Poppins_400Regular",
+  },
+  subtitle: {
+    fontSize: 20,
+    color: "#555",
+    textAlign: "left",
+    alignSelf: "flex-start",
+    marginTop: 8,
+    marginBottom: 10,
+    fontWeight: "500",
+    fontFamily: "Poppins_400Regular",
+  },
+  image: { 
+    width: 350, 
+    height: 500, 
+    resizeMode: "contain",
+    marginTop: -40,
+    alignSelf: "center"
+  },
 
   // Dots styles
   dotsContainer: {
@@ -742,9 +814,19 @@ subtitle: {
     alignItems: "center",
     marginRight: 8,
   },
-  customCheckboxChecked: { backgroundColor: "#6B5AED" },
-  checkboxText: { flex: 1, fontSize: 16, color: "#333" , fontFamily: "Poppins_400Regular",},
-  link: { color: "#279D7D", textDecorationLine: "underline" },
+  customCheckboxChecked: { 
+    backgroundColor: "#6B5AED" 
+  },
+  checkboxText: { 
+    flex: 1, 
+    fontSize: 16, 
+    color: "#333",
+    fontFamily: "Poppins_400Regular",
+  },
+  link: { 
+    color: "#279D7D", 
+    textDecorationLine: "underline" 
+  },
   button: {
     marginHorizontal: 20,
     marginBottom: 100,
@@ -752,5 +834,9 @@ subtitle: {
     borderRadius: 10,
     alignItems: "center",
   },
-  buttonText: { color: "#fff", fontSize: 20, fontWeight: "600" },
+  buttonText: { 
+    color: "#fff", 
+    fontSize: 20, 
+    fontWeight: "600" 
+  },
 });

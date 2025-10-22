@@ -1574,37 +1574,58 @@ export default function HealthDashboard({ navigation }) {
         </View>
 
         {/* Recommended Reads */}
-        <View style={styles.readsSection}>
-          <View style={styles.readsHeader}>
-            <Text style={styles.readsTitle}>Recommended Reads</Text>
-            <Ionicons name="chevron-forward" size={24} color="#333" />
-          </View>
+       <View style={styles.readsSection}>
+  <View style={styles.readsHeader}>
+    <Text style={styles.readsTitle}>Recommended Reads</Text>
+    <Ionicons name="chevron-forward" size={24} color="#333" />
+  </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.readsScroll}>
-            <View style={styles.readCard}>
-              <View style={styles.readImage} />
-              <View style={styles.readInfo}>
-                <View style={styles.readTag}>
-                  <Text style={styles.readTagText}>Stress Management</Text>
-                </View>
-                <Text style={styles.readTime}>7 min</Text>
-                <Text style={styles.readTitle}>Mindfulness in Daily Life: Simple Practices to Reduce Stress</Text>
-              </View>
-            </View>
-
-            <View style={styles.readCard}>
-              <View style={styles.readImage} />
-              <View style={styles.readInfo}>
-                <View style={styles.readTag}>
-                  <Text style={styles.readTagText}>Stress Management</Text>
-                </View>
-                <Text style={styles.readTime}>5 min</Text>
-                <Text style={styles.readTitle}>Mindfulness in Daily Life: Simple Practices to Reduce</Text>
-              </View>
-            </View>
-          </ScrollView>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.readsScroll}>
+    <View style={styles.readCard}>
+      <Image 
+        source={require('../../../assets/Dashoabdicons/stress.png')} 
+        style={styles.readImage}
+        resizeMode="cover"
+      />
+      <View style={styles.readInfo}>
+        <View style={styles.readTag}>
+          <Text style={styles.readTagText}>Stress Management</Text>
         </View>
+        <Text style={styles.readTime}>7 min</Text>
+        <Text style={styles.readTitle}>Mindfulness in Daily Life: Simple Practices to Reduce Stress</Text>
+      </View>
+    </View>
 
+    <View style={styles.readCard}>
+      <Image 
+        source={require('../../../assets/Dashoabdicons/stress2.png')} 
+        style={styles.readImage}
+        resizeMode="cover"
+      />
+      <View style={styles.readInfo}>
+        <View style={styles.readTag}>
+          <Text style={styles.readTagText}>Stress Management</Text>
+        </View>
+        <Text style={styles.readTime}>5 min</Text>
+        <Text style={styles.readTitle}>Mindfulness in Daily Life: Simple Practices to Reduce</Text>
+      </View>
+    </View>
+     <View style={styles.readCard}>
+      <Image 
+        source={require('../../../assets/Dashoabdicons/stress3.png')} 
+        style={styles.readImage}
+        resizeMode="cover"
+      />
+      <View style={styles.readInfo}>
+        <View style={styles.readTag}>
+          <Text style={styles.readTagText}>Stress Management</Text>
+        </View>
+        <Text style={styles.readTime}>5 min</Text>
+        <Text style={styles.readTitle}>Mindfulness in Daily Life: Simple Practices to Reduce</Text>
+      </View>
+    </View>
+  </ScrollView>
+</View>
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
@@ -1726,18 +1747,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   gradientBg: {
-    paddingTop: Math.max(StatusBar.currentHeight || 0, 20) + 10,
-    paddingBottom: 30,
+    paddingTop: Math.max(StatusBar.currentHeight || 0, 20) + 5,
+    paddingBottom: 20,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
-    minHeight: screenHeight * 0.25,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    marginBottom: 20,
-    marginTop: 10,
+    marginBottom: 15,
+    marginTop: 5,
   },
   profilePic: {
     width: 50,
@@ -1786,16 +1806,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     backgroundColor: "#fff",
     marginHorizontal: Math.max(15, screenWidth * 0.04),
-    marginVertical: 10,
+    marginVertical: 8,
     borderRadius: 50,
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    paddingVertical: 15,
+    paddingVertical: 12,
     elevation: 3,
     maxWidth: screenWidth - (Math.max(15, screenWidth * 0.04) * 2),
   },
   cardTextContainer: {
     flex: 1,
-    marginRight: 10,
+    marginRight:10,
   },
   cardSubtext: {
     fontSize: Math.min(13, screenWidth * 0.035),
@@ -1829,11 +1849,11 @@ const styles = StyleSheet.create({
   whiteContent: {
     flex: 1,
     backgroundColor: "#fff",
-    paddingTop: 30,
+    paddingTop: 20,
   },
   featuresSection: {
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
-    marginBottom: 30,
+    marginBottom: 10,
     alignItems: "center",
   },
   sectionTitleContainer: {
@@ -1844,7 +1864,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: Math.min(22, screenWidth * 0.055),
+    fontSize: 20,
     fontFamily: "Poppins_400Regular",
     fontWeight: "bold",
     color: "#333",
@@ -1866,7 +1886,7 @@ const styles = StyleSheet.create({
   },
   featureIcon: {
     width: Math.min(107, screenWidth * 0.25),
-    height: Math.min(120, screenWidth * 0.30),
+    height: Math.min(135, screenWidth * 0.30),
   },
   vitalsSection: {
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
@@ -1898,14 +1918,14 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   vitalCardTitle: {
-    fontSize: 13,
+    fontSize: 16,
     fontFamily: "Poppins_400Regular",
     fontWeight: "600",
     color: "#333",
     marginBottom: 2,
   },
   vitalCardTime: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: "Poppins_400Regular",
     color: "#999",
     marginBottom: 15,
@@ -1948,7 +1968,7 @@ const styles = StyleSheet.create({
     marginRight: 5,
   },
   vitalUnit: {
-    fontSize: 13,
+    fontSize: 20,
     fontFamily: "Poppins_400Regular",
     color: "#999",
     marginBottom: 3,
@@ -1973,11 +1993,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 20,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#ddd",
   },
   appointmentCard: {
     backgroundColor: "#C9CAFF",
@@ -2072,11 +2089,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 20,
     padding: Math.max(20, screenWidth * 0.05),
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#ddd",
   },
   medicineItem: {
     flexDirection: "row",

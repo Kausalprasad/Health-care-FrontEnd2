@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   StatusBar,
+   SafeAreaView,
   Dimensions,
 } from 'react-native';
 import { PieChart } from 'react-native-chart-kit';
@@ -201,7 +202,7 @@ const DayDetailScreen = ({ route, navigation }) => {
 
   // Main UI
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
       {/* Header */}
@@ -268,7 +269,7 @@ const DayDetailScreen = ({ route, navigation }) => {
           <Text style={styles.sectionTitle}>Estimate Cost : {currentMeal.cost}</Text>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 

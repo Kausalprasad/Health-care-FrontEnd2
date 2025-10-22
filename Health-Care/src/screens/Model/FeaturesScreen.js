@@ -8,7 +8,6 @@ import {
   SafeAreaView,
   StatusBar,
   Image,
-  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DoctorPng from "../../../assets/Dashoabdicons/Group 21.png";
@@ -23,7 +22,6 @@ import pregnancy from '../../../assets/Dashoabdicons/pregnancy.png';
 import Insurance from '../../../assets/Dashoabdicons/Insurance.png'; 
 import Diet from '../../../assets/Dashoabdicons/Diet.png';
 import Calorie from '../../../assets/Dashoabdicons/Calorie.png';
-const { width: screenWidth } = Dimensions.get('window');
 
 const PngIcon = ({ source, style }) => (
   <Image source={source} style={[{ resizeMode: "contain" }, style]} />
@@ -70,7 +68,7 @@ export default function FeaturesScreen({ navigation }) {
         },
         {
           icon: pregnancy,
-          route: "PregnancyScreen",
+          route: "MotherBabyCareScreen",
         },
         {
           icon: Insurance,
@@ -93,6 +91,7 @@ export default function FeaturesScreen({ navigation }) {
           icon: DoctorPng,
           route: "HealthGames",
         },
+       
       ],
     },
   ];
@@ -166,7 +165,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: "Poppins_400Regular",
     fontWeight: "bold",
     color: "#333",
@@ -181,7 +180,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   categorySection: {
-    marginTop: 25,
+    marginTop: 20,
   },
   categoryHeader: {
     backgroundColor: "#7475B4",
@@ -191,7 +190,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   categoryTitle: {
-    fontSize: 15,
+    fontSize: 18,
     fontFamily: "Poppins_400Regular",
     fontWeight: "600",
     color: "#fff",
@@ -199,16 +198,18 @@ const styles = StyleSheet.create({
   featuresGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-evenly",
-    gap: 20,
+    justifyContent: "flex-start",
+    gap: 10,
   },
   featureItem: {
+    width: '30%',
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 15,
   },
   featureIcon: {
-    width: 107,
-    height: 120,
+    width: '90%',
+    height: 135,
   },
   bottomSpacing: {
     height: 30,

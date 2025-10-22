@@ -19,43 +19,34 @@ import { Ionicons } from "@expo/vector-icons"
 import * as ImagePicker from "expo-image-picker"
 import { CameraView, useCameraPermissions } from "expo-camera"
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator'
-import { BASE_URL } from "../../config/config"
-import * as Font from 'expo-font'
+import Svg, { Circle } from 'react-native-svg'
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 
 const { width, height } = Dimensions.get("window")
+
+// Updated API URL
+const API_URL = "https://ycgirquuktbdgmhzjetmonlmpq0iggls.lambda-url.ap-south-1.on.aws/analyze"
 
 const TongueDiseaseCheckerScreen = ({ navigation }) => {
   const [imageUri, setImageUri] = useState(null)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loadingProgress, setLoadingProgress] = useState(0)
   const [showImageOptions, setShowImageOptions] = useState(false)
   const [showCamera, setShowCamera] = useState(false)
   const [permission, requestPermission] = useCameraPermissions()
-  const [fontsLoaded, setFontsLoaded] = useState(false)
   const cameraRef = useRef(null)
   
   // Animation for guide box
   const pulseAnim = useRef(new Animated.Value(1)).current
+  const progressAnim = useRef(new Animated.Value(0)).current
+  const circleAnim = useRef(new Animated.Value(0)).current
   const [guideColor, setGuideColor] = useState("#FFD700")
   const [cameraFacing, setCameraFacing] = useState("front")
   const [countdown, setCountdown] = useState(null)
   const autoClickTimerRef = useRef(null)
-
-  // Load fonts
-  useEffect(() => {
-    async function loadFonts() {
-      try {
-        await Font.loadAsync({
-          'Ionicons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
-        })
-        setFontsLoaded(true)
-      } catch (error) {
-        console.log('Font loading error:', error)
-        setFontsLoaded(true)
-      }
-    }
-    loadFonts()
-  }, [])
+  const progressIntervalRef = useRef(null)
 
   useEffect(() => {
     Animated.loop(
@@ -86,6 +77,62 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
       cancelAutoCapture()
     }
   }, [showCamera])
+
+  // Animate progress bar
+  useEffect(() => {
+    if (loading) {
+      Animated.timing(progressAnim, {
+        toValue: loadingProgress,
+        duration: 300,
+        useNativeDriver: false,
+      }).start()
+      
+      // Animate circular progress
+      Animated.timing(circleAnim, {
+        toValue: loadingProgress,
+        duration: 300,
+        useNativeDriver: false,
+      }).start()
+    } else {
+      progressAnim.setValue(0)
+      circleAnim.setValue(0)
+    }
+  }, [loadingProgress, loading])
+
+  const startProgressSimulation = () => {
+    setLoadingProgress(0)
+    let progress = 0
+    
+    // Clear any existing interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+    }
+    
+    progressIntervalRef.current = setInterval(() => {
+      progress += Math.random() * 15 + 5 // Random increment between 5-20
+      
+      if (progress >= 90) {
+        progress = 90 // Stop at 90% and wait for actual response
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current)
+        }
+      }
+      
+      setLoadingProgress(Math.min(progress, 90))
+    }, 400)
+  }
+
+  const completeProgress = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+    }
+    setLoadingProgress(100)
+    
+    // Keep at 100% for a moment before hiding
+    setTimeout(() => {
+      setLoadingProgress(0)
+    }, 500)
+  }
 
   const getPermissions = async (type = 'camera') => {
     try {
@@ -204,38 +251,35 @@ const TongueDiseaseCheckerScreen = ({ navigation }) => {
     }
   }
 
-const cropImageToGuideBox = async (imageUri) => {
+  const cropImageToGuideBox = async (imageUri) => {
     try {
-      // iOS aur Android dono ke liye dynamic cropping
-      const Image = require('react-native').Image;
-      
-      // Pehle image size check karo
-      const getImageSize = () => new Promise((resolve, reject) => {
-        Image.getSize(
-          imageUri,
-          (width, height) => resolve({ width, height }),
-          (error) => reject(error)
-        );
-      });
-      
+      // Image ka original size le lo
+      const getImageSize = () =>
+        new Promise((resolve, reject) => {
+          Image.getSize(
+            imageUri,
+            (width, height) => resolve({ width, height }),
+            (error) => reject(error)
+          );
+        });
+
       const { width: imgWidth, height: imgHeight } = await getImageSize();
       console.log('Original image size:', imgWidth, imgHeight);
-      
-      // Guide box screen ke center mein hai (280x280)
-      // Calculate crop based on aspect ratio
-      const screenWidth = width;
+
+      // Guide box ka size (screen center me 280x280)
       const guideBoxSize = 280;
-      const guideBoxRatio = guideBoxSize / screenWidth;
-      
-      // Image mein guide box ka actual size
+      const guideBoxRatio = guideBoxSize / width;
+
+      // Image me guide box ka actual size calculate karo
       const cropSize = Math.min(imgWidth, imgHeight) * guideBoxRatio;
-      
-      // Center se crop karo
+
+      // Center se crop karne ke liye origin calculate karo
       const originX = (imgWidth - cropSize) / 2;
       const originY = (imgHeight - cropSize) / 2;
-      
+
       console.log('Crop parameters:', { originX, originY, cropSize });
-      
+
+      // Image crop aur resize karo
       const croppedImage = await manipulateAsync(
         imageUri,
         [
@@ -256,14 +300,14 @@ const cropImageToGuideBox = async (imageUri) => {
         ],
         { compress: 0.8, format: SaveFormat.JPEG }
       );
-      
+
       console.log('Image cropped successfully:', croppedImage.uri);
       return croppedImage.uri;
     } catch (error) {
       console.error('Crop error:', error);
       throw error;
     }
-  }
+  };
 
   const toggleCameraFacing = () => {
     setCameraFacing(current => (current === "back" ? "front" : "back"))
@@ -324,6 +368,7 @@ const cropImageToGuideBox = async (imageUri) => {
     console.log('Sending to backend:', imageSource)
 
     setLoading(true)
+    startProgressSimulation()
     
     try {
       const formData = new FormData()
@@ -337,7 +382,7 @@ const cropImageToGuideBox = async (imageUri) => {
         type: mimeType,
       })
 
-      const response = await fetch(`${BASE_URL}/api/tongue-disease`, {
+      const response = await fetch(API_URL, {
         method: 'POST',
         body: formData,
         headers: {
@@ -352,82 +397,185 @@ const cropImageToGuideBox = async (imageUri) => {
       const data = await response.json()
       console.log('API Response:', data)
 
-      if (data) {
-        setResult(data)
-      } else {
-        throw new Error('Empty response from server')
+      // Check if API returned sensitive content error
+      if (data && data.error && typeof data.error === 'string' && data.error.includes('SensitiveContentDetected')) {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current)
+        }
+        setLoading(false)
+        Alert.alert(
+          'Analysis Not Available', 
+          'The image could not be analyzed due to content restrictions. This is a backend API issue with Azure OpenAI content filtering. Please contact support or try with a clearer photo.',
+          [{ text: 'OK' }]
+        )
+        setResult(null)
+        return
       }
 
+      if (data && data.success) {
+        completeProgress()
+        setTimeout(() => {
+          setResult(data)
+        }, 500)
+      } else {
+        throw new Error(data?.error || 'Empty or invalid response from server')
+      }
     } catch (error) {
       console.error('API Error:', error)
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+      }
       Alert.alert('Analysis Failed', 'Unable to analyze image. Please try again.')
       setResult({ error: 'Analysis failed' })
     } finally {
-      setLoading(false)
+      setTimeout(() => {
+        setLoading(false)
+      }, 500)
     }
   }
 
   const renderValue = (value, key) => {
     if (value === null || value === undefined) return null
-    if (key === 'raw_scores') return null
 
-    if (key === 'diseases' && Array.isArray(value)) {
+    // Handle the new API response format
+    if (key === 'tongue_summary') {
       return (
         <View key={key} style={styles.diseaseSection}>
-          <Text style={styles.resultSectionTitle}>Analysis Result:</Text>
-          {value.map((disease, index) => (
-            <View key={index} style={styles.diseaseItem}>
-              <View style={styles.diseaseHeader}>
-                <Ionicons 
-                  name={disease[0].includes("Healthy") ? "checkmark-circle" : "warning"} 
-                  size={20} 
-                  color={disease[0].includes("Healthy") ? "#4CAF50" : "#FF9800"} 
-                />
-                <Text style={[
-                  styles.diseaseTitle,
-                  { color: disease[0].includes("Healthy") ? "#4CAF50" : "#FF9800" }
-                ]}>
-                  {disease[0]}
-                </Text>
-              </View>
-              
-              {disease[1] && (
-                <View style={styles.remediesSection}>
-                  {disease[1].home_remedies && disease[1].home_remedies.length > 0 && (
-                    <View style={styles.remedyGroup}>
-                      <Text style={styles.remedyTitle}>
-                        <Ionicons name="leaf" size={14} color="#4CAF50" /> Recommendations:
-                      </Text>
-                      {disease[1].home_remedies.map((remedy, i) => (
-                        <View key={i} style={styles.remedyItem}>
-                          <Ionicons name="ellipse" size={6} color="#4CAF50" style={{ marginTop: 8, marginRight: 8 }} />
-                          <Text style={styles.remedyText}>{remedy}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  
-                  {disease[1].medications && disease[1].medications.length > 0 && (
-                    <View style={styles.remedyGroup}>
-                      <Text style={styles.remedyTitle}>
-                        <Ionicons name="medical" size={14} color="#7475B4" /> Medications:
-                      </Text>
-                      {disease[1].medications.map((med, i) => (
-                        <View key={i} style={styles.remedyItem}>
-                          <Ionicons name="ellipse" size={6} color="#7475B4" style={{ marginTop: 8, marginRight: 8 }} />
-                          <Text style={styles.remedyText}>{med}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              )}
+          <Text style={styles.resultSectionTitle}>Tongue Summary:</Text>
+          <Text style={styles.resultDetailText}>{value}</Text>
+        </View>
+      )
+    }
+
+    if (key === 'main_findings' && Array.isArray(value)) {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Main Findings:</Text>
+          {value.map((item, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Ionicons name="ellipse" size={6} color="#7475B4" style={{ marginTop: 8, marginRight: 8 }} />
+              <Text style={styles.resultDetailText}>{String(item)}</Text>
             </View>
           ))}
         </View>
       )
     }
 
+    if (key === 'possible_issues' && Array.isArray(value)) {
+      return (
+        <View key={key} style={styles.diseaseSection}>
+          <Text style={styles.resultSectionTitle}>Possible Issues:</Text>
+          {value.map((issue, index) => (
+            <View key={index} style={styles.diseaseItem}>
+              <View style={styles.diseaseHeader}>
+                <Ionicons 
+                  name="warning" 
+                  size={20} 
+                  color="#FF9800" 
+                />
+                <Text style={[styles.diseaseTitle, { color: "#FF9800" }]}>
+                  {issue.issue}
+                </Text>
+              </View>
+              
+              <View style={styles.remediesSection}>
+                <View style={styles.remedyGroup}>
+                  <Text style={styles.remedyTitle}>
+                    <Ionicons name="stats-chart" size={14} color="#7475B4" /> Probability:
+                  </Text>
+                  <Text style={[styles.remedyText, { marginLeft: 16 }]}>{issue.probability}</Text>
+                </View>
+
+                {issue.why && (
+                  <View style={styles.remedyGroup}>
+                    <Text style={styles.remedyTitle}>
+                      <Ionicons name="help-circle" size={14} color="#4CAF50" /> Why:
+                    </Text>
+                    <Text style={[styles.remedyText, { marginLeft: 16 }]}>{issue.why}</Text>
+                  </View>
+                )}
+
+                {issue.what_to_do && (
+                  <View style={styles.remedyGroup}>
+                    <Text style={styles.remedyTitle}>
+                      <Ionicons name="checkmark-circle" size={14} color="#4CAF50" /> What to do:
+                    </Text>
+                    <Text style={[styles.remedyText, { marginLeft: 16 }]}>{issue.what_to_do}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'vitamin_deficiency' && Array.isArray(value)) {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Vitamin Deficiency:</Text>
+          {value.map((item, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Ionicons name="ellipse" size={6} color="#7475B4" style={{ marginTop: 8, marginRight: 8 }} />
+              <Text style={styles.resultDetailText}>{String(item)}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'simple_advice' && Array.isArray(value)) {
+      return (
+        <View key={key} style={styles.diseaseSection}>
+          <Text style={styles.resultSectionTitle}>Simple Advice:</Text>
+          {value.map((advice, i) => (
+            <View key={i} style={styles.remedyItem}>
+              <Ionicons name="leaf" size={14} color="#4CAF50" style={{ marginTop: 4, marginRight: 8 }} />
+              <Text style={styles.remedyText}>{advice}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'severity') {
+      const severityColor = value === 'mild' ? '#4CAF50' : value === 'moderate' ? '#FF9800' : '#F44336'
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Severity:</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+            <Ionicons name="pulse" size={16} color={severityColor} />
+            <Text style={[styles.resultDetailText, { color: severityColor, fontWeight: '600', marginLeft: 8 }]}>
+              {String(value).toUpperCase()}
+            </Text>
+          </View>
+        </View>
+      )
+    }
+
+    if (key === 'see_doctor') {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons 
+              name={value ? "medical" : "checkmark-circle"} 
+              size={16} 
+              color={value ? "#FF9800" : "#4CAF50"} 
+            />
+            <Text style={[styles.resultDetailText, { marginLeft: 8, fontWeight: '600' }]}>
+              {value ? "Consultation with doctor recommended" : "No immediate consultation needed"}
+            </Text>
+          </View>
+        </View>
+      )
+    }
+
+    // Skip these keys from rendering
+    if (key === 'success' || key === 'note' || key === 'patient_input' || key === 'tokens_used') {
+      return null
+    }
+
+    // Default rendering for other fields
     if (Array.isArray(value)) {
       return (
         <View key={key} style={{ marginTop: 12 }}>
@@ -483,7 +631,7 @@ const cropImageToGuideBox = async (imageUri) => {
           <View style={styles.disclaimerBox}>
             <Ionicons name="shield-checkmark-outline" size={20} color="#FF9800" />
             <Text style={styles.disclaimerText}>
-              This analysis is for informational purposes only. Please consult a healthcare professional for proper medical advice and diagnosis.
+              {result.note || "This analysis is for informational purposes only. Please consult a healthcare professional for proper medical advice and diagnosis."}
             </Text>
           </View>
         </View>
@@ -495,14 +643,6 @@ const cropImageToGuideBox = async (imageUri) => {
           <Ionicons name="camera" size={20} color="#7475B4" />
           <Text style={styles.newAnalysisText}>Analyze Another Photo</Text>
         </TouchableOpacity>
-      </View>
-    )
-  }
-
-  if (!fontsLoaded) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color="#7475B4" />
       </View>
     )
   }
@@ -580,11 +720,94 @@ const cropImageToGuideBox = async (imageUri) => {
 
         {loading && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#7475B4" />
+            <View style={styles.circularProgressContainer}>
+              <Svg width={200} height={200} style={styles.circularProgress}>
+                {/* Background Circle */}
+                <Circle
+                  cx="100"
+                  cy="100"
+                  r="85"
+                  stroke="#E8E8F0"
+                  strokeWidth="12"
+                  fill="none"
+                />
+                
+                {/* Progress Circle */}
+                <AnimatedCircle
+                  cx="100"
+                  cy="100"
+                  r="85"
+                  stroke="#7475B4"
+                  strokeWidth="12"
+                  fill="none"
+                  strokeDasharray={`${2 * Math.PI * 85}`}
+                  strokeDashoffset={circleAnim.interpolate({
+                    inputRange: [0, 100],
+                    outputRange: [2 * Math.PI * 85, 0],
+                  })}
+                  strokeLinecap="round"
+                  transform="rotate(-90 100 100)"
+                />
+              </Svg>
+              
+              {/* Center Content */}
+              <View style={styles.circularProgressCenter}>
+                <Ionicons name="analytics" size={48} color="#7475B4" />
+                <Text style={styles.circularPercentageText}>
+                  {Math.round(loadingProgress)}%
+                </Text>
+              </View>
+            </View>
+            
             <Text style={styles.loadingText}>Analyzing your tongue photo...</Text>
             <Text style={styles.loadingSubtext}>
-              This may take a few seconds
+              AI is processing your image
             </Text>
+
+            {/* Loading Steps */}
+            <View style={styles.stepsContainer}>
+              <View style={styles.stepItem}>
+                <Ionicons 
+                  name={loadingProgress >= 30 ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={loadingProgress >= 30 ? "#4CAF50" : "#ccc"} 
+                />
+                <Text style={[
+                  styles.stepText,
+                  { color: loadingProgress >= 30 ? "#4CAF50" : "#999" }
+                ]}>
+                  Image Uploaded
+                </Text>
+              </View>
+
+              <View style={styles.stepItem}>
+                <Ionicons 
+                  name={loadingProgress >= 60 ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={loadingProgress >= 60 ? "#4CAF50" : "#ccc"} 
+                />
+                <Text style={[
+                  styles.stepText,
+                  { color: loadingProgress >= 60 ? "#4CAF50" : "#999" }
+                ]}>
+                  AI Processing
+                </Text>
+              </View>
+
+              <View style={styles.stepItem}>
+                <Ionicons 
+                  name={loadingProgress >= 90 ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={loadingProgress >= 90 ? "#4CAF50" : "#ccc"} 
+                />
+                <Text style={[
+                  styles.stepText,
+                  { color: loadingProgress >= 90 ? "#4CAF50" : "#999" }
+                ]}>
+                  Generating Results
+                </Text>
+              </View>
+            </View>
           </View>
         )}
 
@@ -950,6 +1173,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E8E8F0",
   },
+  circularProgressContainer: {
+    width: 200,
+    height: 200,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 25,
+  },
+  circularProgress: {
+    position: "absolute",
+  },
+  circularProgressCenter: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  circularPercentageText: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "#7475B4",
+    marginTop: 10,
+  },
   loadingText: {
     fontSize: 16,
     fontWeight: "600",
@@ -960,6 +1203,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
     marginTop: 5,
+    marginBottom: 20,
+  },
+  stepsContainer: {
+    width: "100%",
+    marginTop: 25,
+    paddingHorizontal: 10,
+  },
+  stepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  stepText: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginLeft: 10,
   },
   resultCard: {
     backgroundColor: "#fff",
@@ -1217,16 +1476,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 10,
     textAlign: "center",
-    textShadowColor: "rgba(0, 0, 0, 0.75)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  instructionSubtext: {
-    fontSize: 14,
-    fontWeight: "500",
-    marginTop: 5,
-    textAlign: "center",
-    color: "#FFF",
     textShadowColor: "rgba(0, 0, 0, 0.75)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,

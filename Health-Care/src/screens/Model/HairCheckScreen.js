@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   View,
   Text,
@@ -12,244 +12,532 @@ import {
   StatusBar,
   Dimensions,
   Modal,
+  Animated,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
-import { BASE_URL } from "../../config/config";
+import Svg, { Circle } from 'react-native-svg'
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 
 const { width } = Dimensions.get('window')
+
+// Updated API URL
+const API_URL = "https://l6ndln3sboi2liwmkpzzsem5o40buoxa.lambda-url.ap-south-1.on.aws/analyze"
 
 const HairCheckScreen = ({ navigation }) => {
   const [imageUri, setImageUri] = useState(null)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loadingProgress, setLoadingProgress] = useState(0)
   const [showImageOptions, setShowImageOptions] = useState(false)
 
-  // ✅ Pick photo (Camera/Gallery) — iOS and Android compatible
-// ✅ Expo-specific permission handling
-const getPermissions = async (type = 'camera') => {
-  try {
-    if (type === 'camera') {
-      const cameraPermission = await ImagePicker.getCameraPermissionsAsync()
-      if (cameraPermission.status !== 'granted') {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync()
-        if (status !== 'granted') {
-          Alert.alert(
-            'Camera Permission Required',
-            'Please enable camera permission from device settings to take photos.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'OK' }
-            ]
-          )
-          return false
-        }
-      }
+  // Animation refs
+  const progressAnim = useRef(new Animated.Value(0)).current
+  const circleAnim = useRef(new Animated.Value(0)).current
+  const progressIntervalRef = useRef(null)
+
+  // Animate progress bar
+  useEffect(() => {
+    if (loading) {
+      Animated.timing(progressAnim, {
+        toValue: loadingProgress,
+        duration: 300,
+        useNativeDriver: false,
+      }).start()
+      
+      Animated.timing(circleAnim, {
+        toValue: loadingProgress,
+        duration: 300,
+        useNativeDriver: false,
+      }).start()
     } else {
-      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync()
-      if (mediaPermission.status !== 'granted') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-        if (status !== 'granted') {
-          Alert.alert(
-            'Gallery Permission Required',
-            'Please enable gallery permission from device settings to select photos.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'OK' }
-            ]
-          )
-          return false
+      progressAnim.setValue(0)
+      circleAnim.setValue(0)
+    }
+  }, [loadingProgress, loading])
+
+  const startProgressSimulation = () => {
+    setLoadingProgress(0)
+    let progress = 0
+    
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+    }
+    
+    progressIntervalRef.current = setInterval(() => {
+      progress += Math.random() * 15 + 5
+      
+      if (progress >= 90) {
+        progress = 90
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current)
         }
       }
-    }
-    return true
-  } catch (error) {
-    console.error('Permission error:', error)
-    return false
+      
+      setLoadingProgress(Math.min(progress, 90))
+    }, 400)
   }
-}
 
-// ✅ Fixed pickPhoto function - Auto close modal
-const pickPhoto = async (fromCamera = false) => {
-  try {
-    console.log(`Hair ${fromCamera ? 'Camera' : 'Gallery'} selected`)
+  const completeProgress = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+    }
+    setLoadingProgress(100)
+    
+    setTimeout(() => {
+      setLoadingProgress(0)
+    }, 500)
+  }
 
-    // Get permissions
-    const hasPermission = await getPermissions(fromCamera ? 'camera' : 'gallery')
-    if (!hasPermission) {
-      // ✅ Close modal if permission denied
+  const getPermissions = async (type = 'camera') => {
+    try {
+      if (type === 'camera') {
+        const cameraPermission = await ImagePicker.getCameraPermissionsAsync()
+        if (cameraPermission.status !== 'granted') {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync()
+          if (status !== 'granted') {
+            Alert.alert(
+              'Camera Permission Required',
+              'Please enable camera permission from device settings to take photos.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'OK' }
+              ]
+            )
+            return false
+          }
+        }
+      } else {
+        const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync()
+        if (mediaPermission.status !== 'granted') {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+          if (status !== 'granted') {
+            Alert.alert(
+              'Gallery Permission Required',
+              'Please enable gallery permission from device settings to select photos.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'OK' }
+              ]
+            )
+            return false
+          }
+        }
+      }
+      return true
+    } catch (error) {
+      console.error('Permission error:', error)
+      return false
+    }
+  }
+
+  const pickPhoto = async (fromCamera = false) => {
+    try {
+      console.log(`Hair ${fromCamera ? 'Camera' : 'Gallery'} selected`)
+
+      const hasPermission = await getPermissions(fromCamera ? 'camera' : 'gallery')
+      if (!hasPermission) {
+        setShowImageOptions(false)
+        return
+      }
+
+      const options = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: false,
+        exif: false,
+      }
+
+      console.log('Launching hair image picker...')
+
+      let result
+      if (fromCamera) {
+        result = await ImagePicker.launchCameraAsync(options)
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync(options)
+      }
+
+      console.log('Hair image picker result:', {
+        canceled: result.canceled,
+        hasAssets: !!result.assets,
+        assetsLength: result.assets?.length
+      })
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0]
+        console.log('Hair image selected:', {
+          uri: asset.uri,
+          width: asset.width,
+          height: asset.height,
+          fileSize: asset.fileSize
+        })
+
+        setImageUri(asset.uri)
+        setResult(null)
+        setShowImageOptions(false)
+        
+        setTimeout(() => {
+          sendToBackend(asset)
+        }, 300)
+      } else {
+        console.log('Hair image picker canceled')
+        setShowImageOptions(false)
+      }
+    } catch (error) {
+      console.error('Hair image picker error:', error)
       setShowImageOptions(false)
+      Alert.alert(
+        'Error', 
+        `Failed to ${fromCamera ? 'take photo' : 'select image'}. Please try again.`
+      )
+    }
+  }
+
+  const sendToBackend = async (asset) => {
+    if (!asset && !imageUri) {
+      Alert.alert("Error", "Please select a photo first!")
       return
     }
 
-    const options = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8, // Optimize for network
-      base64: false,
-      exif: false,
-    }
+    const imageSource = asset?.uri || imageUri
+    console.log('Sending hair image to backend:', imageSource)
+    console.log('Hair API Endpoint:', API_URL)
 
-    console.log('Launching hair image picker...')
+    setLoading(true)
+    startProgressSimulation()
+    
+    try {
+      const formData = new FormData()
+      const uriParts = imageSource.split('.')
+      const fileType = uriParts[uriParts.length - 1].toLowerCase()
+      const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg'
+      
+      console.log('Hair file info:', { fileType, mimeType })
 
-    let result
-    if (fromCamera) {
-      result = await ImagePicker.launchCameraAsync(options)
-    } else {
-      result = await ImagePicker.launchImageLibraryAsync(options)
-    }
-
-    console.log('Hair image picker result:', {
-      canceled: result.canceled,
-      hasAssets: !!result.assets,
-      assetsLength: result.assets?.length
-    })
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      const asset = result.assets[0]
-      console.log('Hair image selected:', {
-        uri: asset.uri,
-        width: asset.width,
-        height: asset.height,
-        fileSize: asset.fileSize
+      formData.append('file', {
+        uri: imageSource,
+        name: `hair_${Date.now()}.${fileType}`,
+        type: mimeType,
       })
 
-      setImageUri(asset.uri)
-      setResult(null)
+      console.log('Making hair analysis API request...')
+
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
+      })
+
+      console.log('Hair API response status:', response.status)
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('Hair API Response:', JSON.stringify(data, null, 2))
+
+      if (data && data.success) {
+        completeProgress()
+        setTimeout(() => {
+          setResult(data)
+        }, 500)
+      } else {
+        throw new Error('Empty response from hair analysis server')
+      }
+
+    } catch (error) {
+      console.error('Hair API Error:', error)
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+      }
       
-      // ✅ IMPORTANT: Close modal when image selected
-      setShowImageOptions(false)
-      
-      // Auto analyze with delay
+      let errorMessage = 'Network error occurred'
+      if (error.message.includes('fetch')) {
+        errorMessage = 'Unable to connect to server. Check your internet connection.'
+      } else if (error.message.includes('HTTP error')) {
+        errorMessage = 'Server error occurred. Please try again later.'
+      }
+
+      Alert.alert('Hair Analysis Failed', errorMessage)
+      setResult({ error: errorMessage })
+    } finally {
       setTimeout(() => {
-        sendToBackend(asset)
-      }, 300)
-    } else {
-      console.log('Hair image picker canceled')
-      // ✅ IMPORTANT: Close modal even when canceled
-      setShowImageOptions(false)
-    }
-  } catch (error) {
-    console.error('Hair image picker error:', error)
-    // ✅ IMPORTANT: Close modal on error too
-    setShowImageOptions(false)
-    Alert.alert(
-      'Error', 
-      `Failed to ${fromCamera ? 'take photo' : 'select image'}. Please try again.`
-    )
-  }
-}
-
-// ✅ Fixed sendToBackend function (same as before)
-const sendToBackend = async (asset) => {
-  if (!asset && !imageUri) {
-    Alert.alert("Error", "Please select a photo first!")
-    return
-  }
-
-  const imageSource = asset?.uri || imageUri
-  console.log('Sending hair image to backend:', imageSource)
-  console.log('Hair API Endpoint:', `${BASE_URL}/api/hair/predict`)
-
-  setLoading(true)
-  
-  try {
-    // Create FormData
-    const formData = new FormData()
-    
-    // File extension and MIME type
-    const uriParts = imageSource.split('.')
-    const fileType = uriParts[uriParts.length - 1].toLowerCase()
-    const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg'
-    
-    console.log('Hair file info:', { fileType, mimeType })
-
-    // Append file to FormData (using "image" as per hair API)
-    formData.append('image', {
-      uri: imageSource,
-      name: `hair_${Date.now()}.${fileType}`,
-      type: mimeType,
-    })
-
-    console.log('Making hair analysis API request...')
-
-    // API call WITHOUT Content-Type header (let FormData handle it)
-    const response = await fetch(`${BASE_URL}/api/hair/predict`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Accept': 'application/json',
-        // DON'T set Content-Type for FormData
-      },
-    })
-
-    console.log('Hair API response status:', response.status)
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const data = await response.json()
-    console.log('Hair API Response:', JSON.stringify(data, null, 2))
-
-    if (data) {
-      setResult(data)
-    } else {
-      throw new Error('Empty response from hair analysis server')
-    }
-
-  } catch (error) {
-    console.error('Hair API Error:', error)
-    
-    let errorMessage = 'Network error occurred'
-    if (error.message.includes('fetch')) {
-      errorMessage = 'Unable to connect to server. Check your internet connection.'
-    } else if (error.message.includes('HTTP error')) {
-      errorMessage = 'Server error occurred. Please try again later.'
-    }
-
-    Alert.alert('Hair Analysis Failed', errorMessage)
-    setResult({ error: errorMessage })
-  } finally {
-    setLoading(false)
-  }
-}
-  // ✅ Get condition color and icon
-  const getConditionStyle = (condition) => {
-    const lowerCondition = condition?.toLowerCase() || ''
-    
-    if (lowerCondition.includes('healthy') || lowerCondition.includes('normal')) {
-      return { color: '#4CAF50', icon: 'checkmark-circle', bgColor: '#E8F5E8' }
-    } else if (lowerCondition.includes('dandruff')) {
-      return { color: '#FF9800', icon: 'warning', bgColor: '#FFF3E0' }
-    } else if (lowerCondition.includes('loss') || lowerCondition.includes('thinning')) {
-      return { color: '#F44336', icon: 'alert-circle', bgColor: '#FFEBEE' }
-    } else if (lowerCondition.includes('dry')) {
-      return { color: '#2196F3', icon: 'water', bgColor: '#E3F2FD' }
-    } else {
-      return { color: '#8B4513', icon: 'medical', bgColor: '#F3E5F5' }
+        setLoading(false)
+      }, 500)
     }
   }
 
-  // ✅ Get recommendation based on condition
-  const getRecommendation = (condition) => {
-    const lowerCondition = condition?.toLowerCase() || ''
-    
-    if (lowerCondition.includes('healthy') || lowerCondition.includes('normal')) {
-      return "✅ Your hair appears healthy! Continue your current hair care routine."
-    } else if (lowerCondition.includes('dandruff')) {
-      return "⚠️ Consider using anti-dandruff shampoo and consult a dermatologist if condition persists."
-    } else if (lowerCondition.includes('loss') || lowerCondition.includes('thinning')) {
-      return "⚠️ Hair loss detected. Consider consulting a trichologist or dermatologist for proper treatment."
-    } else if (lowerCondition.includes('dry')) {
-      return "💧 Use moisturizing hair products and consider deep conditioning treatments."
-    } else {
-      return "📋 For proper diagnosis and treatment, consider consulting a hair care professional."
+  const renderValue = (value, key) => {
+    if (value === null || value === undefined) return null
+
+    if (key === 'hair_summary') {
+      return (
+        <View key={key} style={{ marginTop: 8 }}>
+          <Text style={styles.resultSectionTitle}>Hair Summary:</Text>
+          <Text style={styles.resultDetailText}>{value}</Text>
+        </View>
+      )
     }
+
+    if (key === 'hair_type') {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Hair Type:</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+            <Ionicons name="cut" size={16} color="#7475B4" />
+            <Text style={[styles.resultDetailText, { marginLeft: 8, fontWeight: '600', textTransform: 'capitalize' }]}>
+              {value}
+            </Text>
+          </View>
+        </View>
+      )
+    }
+
+    if (key === 'scalp_type') {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Scalp Type:</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+            <Ionicons name="water" size={16} color="#2196F3" />
+            <Text style={[styles.resultDetailText, { marginLeft: 8, fontWeight: '600', textTransform: 'capitalize' }]}>
+              {value}
+            </Text>
+          </View>
+        </View>
+      )
+    }
+
+    if (key === 'main_concerns' && Array.isArray(value)) {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Main Concerns:</Text>
+          {value.map((concern, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Ionicons name="warning" size={14} color="#FF9800" style={{ marginTop: 4, marginRight: 8 }} />
+              <Text style={[styles.resultDetailText, { textTransform: 'capitalize' }]}>{concern}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'hair_scalp_conditions' && Array.isArray(value)) {
+      return (
+        <View key={key} style={styles.diseaseSection}>
+          <Text style={styles.resultSectionTitle}>Hair & Scalp Conditions:</Text>
+          {value.map((condition, index) => (
+            <View key={index} style={styles.diseaseItem}>
+              <View style={styles.diseaseHeader}>
+                <Ionicons 
+                  name="medical" 
+                  size={20} 
+                  color="#FF9800" 
+                />
+                <Text style={[styles.diseaseTitle, { color: "#FF9800" }]}>
+                  {condition.condition}
+                </Text>
+              </View>
+              
+              <View style={styles.remediesSection}>
+                <View style={styles.remedyGroup}>
+                  <Text style={styles.remedyTitle}>
+                    <Ionicons name="stats-chart" size={14} color="#7475B4" /> Severity:
+                  </Text>
+                  <Text style={[styles.remedyText, { marginLeft: 16, textTransform: 'capitalize' }]}>
+                    {condition.severity}
+                  </Text>
+                </View>
+
+                <View style={styles.remedyGroup}>
+                  <Text style={styles.remedyTitle}>
+                    <Ionicons name="pulse" size={14} color="#7475B4" /> Probability:
+                  </Text>
+                  <Text style={[styles.remedyText, { marginLeft: 16, textTransform: 'capitalize' }]}>
+                    {condition.probability}
+                  </Text>
+                </View>
+
+                {condition.why && (
+                  <View style={styles.remedyGroup}>
+                    <Text style={styles.remedyTitle}>
+                      <Ionicons name="help-circle" size={14} color="#4CAF50" /> Why:
+                    </Text>
+                    <Text style={[styles.remedyText, { marginLeft: 16 }]}>{condition.why}</Text>
+                  </View>
+                )}
+
+                {condition.treatment && (
+                  <View style={styles.remedyGroup}>
+                    <Text style={styles.remedyTitle}>
+                      <Ionicons name="medical" size={14} color="#4CAF50" /> Treatment:
+                    </Text>
+                    <Text style={[styles.remedyText, { marginLeft: 16 }]}>{condition.treatment}</Text>
+                  </View>
+                )}
+
+                {condition.prevention && (
+                  <View style={styles.remedyGroup}>
+                    <Text style={styles.remedyTitle}>
+                      <Ionicons name="shield-checkmark" size={14} color="#4CAF50" /> Prevention:
+                    </Text>
+                    <Text style={[styles.remedyText, { marginLeft: 16 }]}>{condition.prevention}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'recommended_routine' && Array.isArray(value)) {
+      return (
+        <View key={key} style={styles.diseaseSection}>
+          <Text style={styles.resultSectionTitle}>Recommended Routine:</Text>
+          {value.map((routine, index) => (
+            <View key={index} style={styles.diseaseItem}>
+              <View style={styles.diseaseHeader}>
+                <Ionicons name="calendar" size={20} color="#4CAF50" />
+                <Text style={[styles.diseaseTitle, { color: "#4CAF50" }]}>
+                  {routine.step}
+                </Text>
+              </View>
+              
+              <View style={styles.remediesSection}>
+                <View style={styles.remedyGroup}>
+                  <Text style={styles.remedyTitle}>
+                    <Ionicons name="flask" size={14} color="#7475B4" /> Product:
+                  </Text>
+                  <Text style={[styles.remedyText, { marginLeft: 16, textTransform: 'capitalize' }]}>
+                    {routine.product}
+                  </Text>
+                </View>
+
+                <View style={styles.remedyGroup}>
+                  <Text style={styles.remedyTitle}>
+                    <Ionicons name="time" size={14} color="#7475B4" /> Frequency:
+                  </Text>
+                  <Text style={[styles.remedyText, { marginLeft: 16 }]}>{routine.frequency}</Text>
+                </View>
+
+                {routine.instructions && (
+                  <View style={styles.remedyGroup}>
+                    <Text style={styles.remedyTitle}>
+                      <Ionicons name="document-text" size={14} color="#4CAF50" /> Instructions:
+                    </Text>
+                    <Text style={[styles.remedyText, { marginLeft: 16 }]}>{routine.instructions}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'lifestyle_tips' && Array.isArray(value)) {
+      return (
+        <View key={key} style={styles.diseaseSection}>
+          <Text style={styles.resultSectionTitle}>Lifestyle Tips:</Text>
+          {value.map((tip, i) => (
+            <View key={i} style={styles.remedyItem}>
+              <Ionicons name="leaf" size={14} color="#4CAF50" style={{ marginTop: 4, marginRight: 8 }} />
+              <Text style={styles.remedyText}>{tip}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'ingredients_to_look_for' && Array.isArray(value)) {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>✅ Ingredients to Look For:</Text>
+          {value.map((ingredient, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#4CAF50" style={{ marginTop: 4, marginRight: 8 }} />
+              <Text style={styles.resultDetailText}>{ingredient}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'ingredients_to_avoid' && Array.isArray(value)) {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>❌ Ingredients to Avoid:</Text>
+          {value.map((ingredient, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Ionicons name="close-circle" size={14} color="#F44336" style={{ marginTop: 4, marginRight: 8 }} />
+              <Text style={styles.resultDetailText}>{ingredient}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    if (key === 'see_dermatologist') {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons 
+              name={value ? "medical" : "checkmark-circle"} 
+              size={16} 
+              color={value ? "#FF9800" : "#4CAF50"} 
+            />
+            <Text style={[styles.resultDetailText, { marginLeft: 8, fontWeight: '600' }]}>
+              {value ? "Dermatologist consultation recommended" : "No immediate consultation needed"}
+            </Text>
+          </View>
+        </View>
+      )
+    }
+
+    if (key === 'severity_level') {
+      const severityColor = value === 'mild' ? '#4CAF50' : value === 'moderate' ? '#FF9800' : '#F44336'
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>Severity Level:</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+            <Ionicons name="pulse" size={16} color={severityColor} />
+            <Text style={[styles.resultDetailText, { color: severityColor, fontWeight: '600', marginLeft: 8, textTransform: 'uppercase' }]}>
+              {value}
+            </Text>
+          </View>
+        </View>
+      )
+    }
+
+    // Skip these keys from rendering
+    if (key === 'success' || key === 'note' || key === 'user_input' || key === 'tokens_used') {
+      return null
+    }
+
+    // Default rendering for other fields
+    if (Array.isArray(value)) {
+      return (
+        <View key={key} style={{ marginTop: 12 }}>
+          <Text style={styles.resultSectionTitle}>{key.replace(/_/g, ' ').toUpperCase()}:</Text>
+          {value.map((item, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Ionicons name="ellipse" size={6} color="#7475B4" style={{ marginTop: 8, marginRight: 8 }} />
+              <Text style={styles.resultDetailText}>{String(item)}</Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    return null
   }
 
-  // ✅ Render analysis result
   const renderResult = () => {
     if (!result) return null
 
@@ -269,54 +557,22 @@ const sendToBackend = async (asset) => {
       )
     }
 
-    const { class: condition, confidence } = result
-    const confidencePercent = Math.round(confidence * 100)
-    const isHighConfidence = confidencePercent >= 70
-    const conditionStyle = getConditionStyle(condition)
-
     return (
       <View style={styles.resultCard}>
         <View style={styles.resultHeader}>
-          <Ionicons 
-            name={conditionStyle.icon} 
-            size={32} 
-            color={conditionStyle.color} 
-          />
-          <Text style={styles.resultTitle}>Analysis Result</Text>
+          <Ionicons name="medical" size={32} color="#7475B4" />
+          <Text style={styles.resultTitle}>Hair Analysis Report</Text>
         </View>
 
-        <View style={[styles.resultContent, { backgroundColor: conditionStyle.bgColor }]}>
-          <View style={{ marginTop: 8 }}>
-            <Text style={styles.resultSectionTitle}>Condition:</Text>
-            <Text style={styles.resultDetailText}>{condition}</Text>
-          </View>
+        <View style={styles.resultContent}>
+          {Object.entries(result).map(([key, value]) => renderValue(value, key))}
           
-          <View style={styles.confidenceContainer}>
-            <Text style={styles.confidenceLabel}>Confidence Level:</Text>
-            <View style={styles.confidenceBar}>
-              <View 
-                style={[
-                  styles.confidenceFill, 
-                  { 
-                    width: `${confidencePercent}%`,
-                    backgroundColor: isHighConfidence ? "#4CAF50" : "#FF9800"
-                  }
-                ]} 
-              />
-            </View>
-            <Text style={[styles.confidenceText, { color: isHighConfidence ? "#4CAF50" : "#FF9800" }]}>
-              {confidencePercent}%
+          <View style={styles.disclaimerBox}>
+            <Ionicons name="shield-checkmark-outline" size={20} color="#FF9800" />
+            <Text style={styles.disclaimerText}>
+              {result.note || "AI guidance - consult dermatologist for professional medical advice."}
             </Text>
           </View>
-
-          <Text style={styles.recommendationText}>
-            ⚠️ This analysis is for informational purposes only. Please consult
-            a doctor for professional advice.
-          </Text>
-
-          <Text style={styles.recommendationText}>
-            {getRecommendation(condition)}
-          </Text>
         </View>
 
         <TouchableOpacity 
@@ -324,7 +580,7 @@ const sendToBackend = async (asset) => {
           onPress={() => setShowImageOptions(true)}
           activeOpacity={0.8}
         >
-          <Ionicons name="camera" size={20} color="#8B4513" />
+          <Ionicons name="camera" size={20} color="#7475B4" />
           <Text style={styles.newAnalysisText}>Analyze Another Photo</Text>
         </TouchableOpacity>
       </View>
@@ -333,7 +589,7 @@ const sendToBackend = async (asset) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <StatusBar barStyle="light-content" backgroundColor="#7475B4" />
       
       {/* Header */}
       <View style={styles.header}>
@@ -364,7 +620,7 @@ const sendToBackend = async (asset) => {
         {!imageUri ? (
           <View style={styles.uploadSection}>
             <View style={styles.uploadIconContainer}>
-              <Ionicons name="camera-outline" size={64} color="#000000" />
+              <Ionicons name="camera-outline" size={64} color="#7475B4" />
             </View>
             <Text style={styles.uploadTitle}>Upload Your Hair Photo</Text>
             <Text style={styles.uploadSubtitle}>
@@ -404,12 +660,95 @@ const sendToBackend = async (asset) => {
           </View>
         )}
 
-        {/* Loading State */}
+        {/* Loading State with Circular Progress */}
         {loading && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#7475B4" />
+            <View style={styles.circularProgressContainer}>
+              <Svg width={200} height={200} style={styles.circularProgress}>
+                {/* Background Circle */}
+                <Circle
+                  cx="100"
+                  cy="100"
+                  r="85"
+                  stroke="#E8E8F0"
+                  strokeWidth="12"
+                  fill="none"
+                />
+                
+                {/* Progress Circle */}
+                <AnimatedCircle
+                  cx="100"
+                  cy="100"
+                  r="85"
+                  stroke="#7475B4"
+                  strokeWidth="12"
+                  fill="none"
+                  strokeDasharray={`${2 * Math.PI * 85}`}
+                  strokeDashoffset={circleAnim.interpolate({
+                    inputRange: [0, 100],
+                    outputRange: [2 * Math.PI * 85, 0],
+                  })}
+                  strokeLinecap="round"
+                  transform="rotate(-90 100 100)"
+                />
+              </Svg>
+              
+              {/* Center Content */}
+              <View style={styles.circularProgressCenter}>
+                <Ionicons name="cut" size={48} color="#7475B4" />
+                <Text style={styles.circularPercentageText}>
+                  {Math.round(loadingProgress)}%
+                </Text>
+              </View>
+            </View>
+            
             <Text style={styles.loadingText}>Analyzing your hair photo...</Text>
-            <Text style={styles.loadingSubtext}>This may take a few seconds</Text>
+            <Text style={styles.loadingSubtext}>AI is processing your image</Text>
+
+            {/* Loading Steps */}
+            <View style={styles.stepsContainer}>
+              <View style={styles.stepItem}>
+                <Ionicons 
+                  name={loadingProgress >= 30 ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={loadingProgress >= 30 ? "#4CAF50" : "#ccc"} 
+                />
+                <Text style={[
+                  styles.stepText,
+                  { color: loadingProgress >= 30 ? "#4CAF50" : "#999" }
+                ]}>
+                  Image Uploaded
+                </Text>
+              </View>
+
+              <View style={styles.stepItem}>
+                <Ionicons 
+                  name={loadingProgress >= 60 ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={loadingProgress >= 60 ? "#4CAF50" : "#ccc"} 
+                />
+                <Text style={[
+                  styles.stepText,
+                  { color: loadingProgress >= 60 ? "#4CAF50" : "#999" }
+                ]}>
+                  AI Processing
+                </Text>
+              </View>
+
+              <View style={styles.stepItem}>
+                <Ionicons 
+                  name={loadingProgress >= 90 ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={loadingProgress >= 90 ? "#4CAF50" : "#ccc"} 
+                />
+                <Text style={[
+                  styles.stepText,
+                  { color: loadingProgress >= 90 ? "#4CAF50" : "#999" }
+                ]}>
+                  Generating Results
+                </Text>
+              </View>
+            </View>
           </View>
         )}
 
@@ -511,7 +850,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
     backgroundColor: "#7475B4",
@@ -530,7 +869,12 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 25,
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: "#E8E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   infoHeader: {
     flexDirection: "row",
@@ -539,16 +883,14 @@ const styles = StyleSheet.create({
   },
   infoTitle: {
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#7475B4",
     marginLeft: 10,
-    fontFamily: "Poppins_400Regular",
   },
   infoText: {
     fontSize: 14,
     color: "#666",
     lineHeight: 20,
-    fontFamily: "Poppins_400Regular",
   },
   uploadSection: {
     backgroundColor: "#fff",
@@ -557,23 +899,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 25,
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: "#E8E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   uploadIconContainer: {
     width: 120,
     height: 120,
-    borderRadius: 100,
-    backgroundColor: "#EAEAF8",
+    borderRadius: 60,
+    backgroundColor: "#F8F9FF",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 20,
+    borderWidth: 2,
+    borderColor: "#E8E8F0",
+    borderStyle: "dashed",
   },
   uploadTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
+    fontSize: 17,
+    fontWeight: "600",
     color: "#333",
     marginBottom: 8,
-    fontFamily: "Poppins_400Regular",
   },
   uploadSubtitle: {
     fontSize: 15,
@@ -581,13 +930,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 25,
     lineHeight: 20,
-    fontFamily: "Poppins_400Regular",
   },
   uploadButton: {
     borderRadius: 15,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#ccc",
+    shadowColor: "#7475B4",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   uploadButtonGradient: {
     flexDirection: "row",
@@ -601,14 +952,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginLeft: 8,
-    fontFamily: "Poppins_400Regular",
   },
   imageSection: {
     marginBottom: 25,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#333",
     marginBottom: 15,
   },
@@ -622,6 +972,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    borderWidth: 1,
+    borderColor: "#E8E8F0",
   },
   image: {
     width: width - 80,
@@ -634,12 +986,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 8,
     paddingHorizontal: 15,
-    backgroundColor: "rgba(139, 69, 19, 0.1)",
+    backgroundColor: "rgba(116, 117, 180, 0.1)",
     borderRadius: 20,
   },
   changeImageText: {
     fontSize: 14,
-    color: "#8B4513",
+    color: "#7475B4",
     fontWeight: "600",
     marginLeft: 5,
   },
@@ -654,6 +1006,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    borderWidth: 1,
+    borderColor: "#E8E8F0",
+  },
+  circularProgressContainer: {
+    width: 200,
+    height: 200,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 25,
+  },
+  circularProgress: {
+    position: "absolute",
+  },
+  circularProgressCenter: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  circularPercentageText: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "#7475B4",
+    marginTop: 10,
   },
   loadingText: {
     fontSize: 16,
@@ -665,6 +1039,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
     marginTop: 5,
+    marginBottom: 20,
+  },
+  stepsContainer: {
+    width: "100%",
+    marginTop: 25,
+    paddingHorizontal: 10,
+  },
+  stepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  stepText: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginLeft: 10,
   },
   resultCard: {
     backgroundColor: "#fff",
@@ -676,6 +1066,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    borderWidth: 1,
+    borderColor: "#E8E8F0",
   },
   resultHeader: {
     flexDirection: "row",
@@ -684,7 +1076,7 @@ const styles = StyleSheet.create({
   },
   resultTitle: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "700",
     color: "#333",
     marginLeft: 12,
   },
@@ -692,6 +1084,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     marginBottom: 15,
+    backgroundColor: "#F8F9FF",
+    borderWidth: 1,
+    borderColor: "#F0F0F8",
   },
   resultText: {
     fontSize: 18,
@@ -701,8 +1096,8 @@ const styles = StyleSheet.create({
   },
   resultSectionTitle: {
     fontSize: 16,
-    fontWeight: "bold",
-    color: "#8B4513",
+    fontWeight: "700",
+    color: "#7475B4",
     marginBottom: 8,
     marginTop: 8,
   },
@@ -712,39 +1107,79 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     flex: 1,
   },
-  confidenceContainer: {
-    marginBottom: 15,
-    marginTop: 15,
+  bulletRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 4,
+    marginBottom: 4,
   },
-  confidenceLabel: {
-    fontSize: 14,
-    color: "#666",
+  diseaseSection: {
+    marginTop: 8,
+  },
+  diseaseItem: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#E8E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  diseaseHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  diseaseTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginLeft: 8,
+    flex: 1,
+  },
+  remediesSection: {
+    marginTop: 8,
+  },
+  remedyGroup: {
+    marginBottom: 12,
+  },
+  remedyTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#555",
     marginBottom: 8,
   },
-  confidenceBar: {
-    height: 8,
-    backgroundColor: "#E0E0E0",
-    borderRadius: 4,
-    marginBottom: 5,
+  remedyItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 6,
+    paddingLeft: 8,
   },
-  confidenceFill: {
-    height: "100%",
-    borderRadius: 4,
-  },
-  confidenceText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    textAlign: "right",
-  },
-  recommendationText: {
+  remedyText: {
     fontSize: 14,
-    color: "#666",
+    color: "#333",
     lineHeight: 20,
-    textAlign: "center",
+    flex: 1,
+  },
+  disclaimerBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "rgba(255, 152, 0, 0.08)",
+    borderRadius: 10,
+    padding: 15,
     marginTop: 15,
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: "#E0E0E0",
+    borderLeftWidth: 4,
+    borderLeftColor: "#FF9800",
+  },
+  disclaimerText: {
+    fontSize: 13,
+    color: "#666",
+    lineHeight: 18,
+    marginLeft: 10,
+    flex: 1,
     fontStyle: "italic",
   },
   newAnalysisButton: {
@@ -753,12 +1188,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 12,
     paddingHorizontal: 20,
-    backgroundColor: "rgba(139, 69, 19, 0.1)",
+    backgroundColor: "rgba(116, 117, 180, 0.1)",
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(116, 117, 180, 0.2)",
   },
   newAnalysisText: {
     fontSize: 14,
-    color: "#8B4513",
+    color: "#7475B4",
     fontWeight: "600",
     marginLeft: 8,
   },
@@ -768,7 +1205,12 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 30,
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: "#E8E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   tipsHeader: {
     flexDirection: "row",
@@ -777,7 +1219,7 @@ const styles = StyleSheet.create({
   },
   tipsTitle: {
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#333",
     marginLeft: 10,
   },
@@ -794,7 +1236,6 @@ const styles = StyleSheet.create({
     color: "#666",
     marginLeft: 10,
     flex: 1,
-    fontFamily: "Poppins_400Regular",
   },
   modalOverlay: {
     flex: 1,
@@ -817,7 +1258,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "700",
     color: "#333",
   },
   optionButton: {

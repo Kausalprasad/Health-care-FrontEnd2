@@ -10,11 +10,10 @@ import {
   ActivityIndicator,
   Alert
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from "@expo/vector-icons";
 import { BASE_URL } from "../../config/config"
 
-
-const InsuranceScreen = () => {
+ const InsuranceScreen = ({navigation}) => {
   const [activeTab, setActiveTab] = useState('predict');
   const [loading, setLoading] = useState(false);
   const [predictionResult, setPredictionResult] = useState(null);
@@ -24,11 +23,11 @@ const InsuranceScreen = () => {
   const [predictionForm, setPredictionForm] = useState({
     operation_name: '',
     operation_cost: '',
-    insurance_company: 'HealthPlus',
-    policy_type: 'Gold',
+    insurance_company: 'MediCare',
+    policy_type: 'Platinum',
     patient_age: '',
-    pre_existing_conditions: '0',
-    emergency_case: '0'
+    pre_existing_conditions: 'None',
+    emergency_case: 'Yes'
   });
 
   // Bill Form State
@@ -36,9 +35,8 @@ const InsuranceScreen = () => {
     patient_name: '',
     operation_name: '',
     operation_cost: '',
-    insurance_company: 'HealthPlus',
-    policy_type: 'Gold',
-    claim_approved: ''
+    claim_amount: '',
+    insurance_company: 'MediCare'
   });
 
   const handlePrediction = async () => {
@@ -49,15 +47,24 @@ const InsuranceScreen = () => {
 
     setLoading(true);
     try {
-        const response = await fetch(`${BASE_URL}/api/insurance/predict`, {
+      const preExistingMap = {
+        'None': 0,
+        'One': 1,
+        'Two': 2,
+        'Three +': 3
+      };
+
+      const response = await fetch(`${BASE_URL}/api/insurance/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...predictionForm,
+          operation_name: predictionForm.operation_name,
           operation_cost: parseFloat(predictionForm.operation_cost),
+          insurance_company: predictionForm.insurance_company,
+          policy_type: predictionForm.policy_type,
           patient_age: parseInt(predictionForm.patient_age),
-          pre_existing_conditions: parseInt(predictionForm.pre_existing_conditions),
-          emergency_case: parseInt(predictionForm.emergency_case)
+          pre_existing_conditions: preExistingMap[predictionForm.pre_existing_conditions] || 0,
+          emergency_case: predictionForm.emergency_case === 'Yes' ? 1 : 0
         })
       });
       const data = await response.json();
@@ -70,21 +77,22 @@ const InsuranceScreen = () => {
   };
 
   const handleBill = async () => {
-    if (!billForm.patient_name || !billForm.operation_name || !billForm.operation_cost || !billForm.claim_approved) {
+    if (!billForm.patient_name || !billForm.operation_name || !billForm.operation_cost || !billForm.claim_amount) {
       Alert.alert('Error', 'Please fill all required fields');
       return;
     }
 
     setLoading(true);
     try {
-       const response = await fetch(`${BASE_URL}/api/insurance/bill`, {
-    
+      const response = await fetch(`${BASE_URL}/api/insurance/bill`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...billForm,
+          patient_name: billForm.patient_name,
+          operation_name: billForm.operation_name,
           operation_cost: parseFloat(billForm.operation_cost),
-          claim_approved: parseFloat(billForm.claim_approved)
+          claim_approved: parseFloat(billForm.claim_amount),
+          insurance_company: billForm.insurance_company
         })
       });
       const data = await response.json();
@@ -98,129 +106,232 @@ const InsuranceScreen = () => {
 
   const renderPredictionForm = () => (
     <View style={styles.formContainer}>
-      <Text style={styles.sectionTitle}>Insurance Claim Prediction</Text>
-      
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Operation Name *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g., Knee Replacement"
-          value={predictionForm.operation_name}
-          onChangeText={(text) => setPredictionForm({...predictionForm, operation_name: text})}
-        />
-      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="Operation Name"
+        placeholderTextColor="#C4C4C4"
+        value={predictionForm.operation_name}
+        onChangeText={(text) => setPredictionForm({...predictionForm, operation_name: text})}
+      />
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Operation Cost (₹) *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="250000"
-          keyboardType="numeric"
-          value={predictionForm.operation_cost}
-          onChangeText={(text) => setPredictionForm({...predictionForm, operation_cost: text})}
-        />
-      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="Operation Cost (₹)"
+        placeholderTextColor="#C4C4C4"
+        keyboardType="numeric"
+        value={predictionForm.operation_cost}
+        onChangeText={(text) => setPredictionForm({...predictionForm, operation_cost: text})}
+      />
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Patient Age *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="45"
-          keyboardType="numeric"
-          value={predictionForm.patient_age}
-          onChangeText={(text) => setPredictionForm({...predictionForm, patient_age: text})}
-        />
-      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="Patient Age"
+        placeholderTextColor="#C4C4C4"
+        keyboardType="numeric"
+        value={predictionForm.patient_age}
+        onChangeText={(text) => setPredictionForm({...predictionForm, patient_age: text})}
+      />
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Insurance Company</Text>
-        <View style={styles.pickerContainer}>
-          {['HealthPlus', 'MediCare', 'LifeCare', 'StarHealth'].map((company) => (
-            <TouchableOpacity
-              key={company}
-              style={[
-                styles.pickerOption,
-                predictionForm.insurance_company === company && styles.pickerOptionActive
-              ]}
-              onPress={() => setPredictionForm({...predictionForm, insurance_company: company})}
-            >
-              <Text style={[
-                styles.pickerText,
-                predictionForm.insurance_company === company && styles.pickerTextActive
-              ]}>{company}</Text>
-            </TouchableOpacity>
-          ))}
+      <Text style={styles.label}>Insurance Company</Text>
+      <View style={styles.buttonGroup}>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.insurance_company === 'HealthPlus' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, insurance_company: 'HealthPlus'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.insurance_company === 'HealthPlus' && styles.optionBtnTextActive
+            ]}>HealthPlus</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.insurance_company === 'MediCare' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, insurance_company: 'MediCare'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.insurance_company === 'MediCare' && styles.optionBtnTextActive
+            ]}>MediCare</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.insurance_company === 'LifeCare' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, insurance_company: 'LifeCare'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.insurance_company === 'LifeCare' && styles.optionBtnTextActive
+            ]}>LifeCare</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.insurance_company === 'StarHealth' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, insurance_company: 'StarHealth'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.insurance_company === 'StarHealth' && styles.optionBtnTextActive
+            ]}>StarHealth</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Policy Type</Text>
-        <View style={styles.pickerContainer}>
-          {['Gold', 'Silver', 'Platinum'].map((type) => (
-            <TouchableOpacity
-              key={type}
-              style={[
-                styles.pickerOption,
-                predictionForm.policy_type === type && styles.pickerOptionActive
-              ]}
-              onPress={() => setPredictionForm({...predictionForm, policy_type: type})}
-            >
-              <Text style={[
-                styles.pickerText,
-                predictionForm.policy_type === type && styles.pickerTextActive
-              ]}>{type}</Text>
-            </TouchableOpacity>
-          ))}
+      <Text style={styles.label}>Policy Type</Text>
+      <View style={styles.buttonGroup}>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.policy_type === 'Gold' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, policy_type: 'Gold'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.policy_type === 'Gold' && styles.optionBtnTextActive
+            ]}>Gold</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.policy_type === 'Silver' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, policy_type: 'Silver'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.policy_type === 'Silver' && styles.optionBtnTextActive
+            ]}>Silver</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.policy_type === 'Platinum' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, policy_type: 'Platinum'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.policy_type === 'Platinum' && styles.optionBtnTextActive
+            ]}>Platinum</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Pre-existing Conditions</Text>
-        <View style={styles.pickerContainer}>
-          {['0', '1', '2', '3+'].map((count) => (
-            <TouchableOpacity
-              key={count}
-              style={[
-                styles.pickerOption,
-                predictionForm.pre_existing_conditions === count && styles.pickerOptionActive
-              ]}
-              onPress={() => setPredictionForm({...predictionForm, pre_existing_conditions: count})}
-            >
-              <Text style={[
-                styles.pickerText,
-                predictionForm.pre_existing_conditions === count && styles.pickerTextActive
-              ]}>{count}</Text>
-            </TouchableOpacity>
-          ))}
+      <Text style={styles.label}>Any Pre-existing Condition</Text>
+      <View style={styles.buttonGroup}>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.pre_existing_conditions === 'None' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, pre_existing_conditions: 'None'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.pre_existing_conditions === 'None' && styles.optionBtnTextActive
+            ]}>None</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.pre_existing_conditions === 'One' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, pre_existing_conditions: 'One'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.pre_existing_conditions === 'One' && styles.optionBtnTextActive
+            ]}>One</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.pre_existing_conditions === 'Two' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, pre_existing_conditions: 'Two'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.pre_existing_conditions === 'Two' && styles.optionBtnTextActive
+            ]}>Two</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.pre_existing_conditions === 'Three +' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, pre_existing_conditions: 'Three +'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.pre_existing_conditions === 'Three +' && styles.optionBtnTextActive
+            ]}>Three +</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Emergency Case</Text>
-        <View style={styles.pickerContainer}>
-          {[{label: 'No', value: '0'}, {label: 'Yes', value: '1'}].map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              style={[
-                styles.pickerOption,
-                predictionForm.emergency_case === option.value && styles.pickerOptionActive
-              ]}
-              onPress={() => setPredictionForm({...predictionForm, emergency_case: option.value})}
-            >
-              <Text style={[
-                styles.pickerText,
-                predictionForm.emergency_case === option.value && styles.pickerTextActive
-              ]}>{option.label}</Text>
-            </TouchableOpacity>
-          ))}
+      <Text style={styles.label}>Is this an emergency</Text>
+      <View style={styles.buttonGroup}>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.emergency_case === 'Yes' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, emergency_case: 'Yes'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.emergency_case === 'Yes' && styles.optionBtnTextActive
+            ]}>Yes</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              predictionForm.emergency_case === 'No' && styles.optionBtnActive
+            ]}
+            onPress={() => setPredictionForm({...predictionForm, emergency_case: 'No'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              predictionForm.emergency_case === 'No' && styles.optionBtnTextActive
+            ]}>No</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      <TouchableOpacity style={styles.submitButton} onPress={handlePrediction} disabled={loading}>
+      <TouchableOpacity 
+        style={styles.submitButton} 
+        onPress={handlePrediction} 
+        disabled={loading}
+      >
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.submitButtonText}>Get Prediction</Text>
+          <Text style={styles.submitButtonText}>Get Claim Prediction</Text>
         )}
       </TouchableOpacity>
     </View>
@@ -228,72 +339,104 @@ const InsuranceScreen = () => {
 
   const renderBillForm = () => (
     <View style={styles.formContainer}>
-      <Text style={styles.sectionTitle}>Generate Medical Bill</Text>
-      
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Patient Name *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter patient name"
-          value={billForm.patient_name}
-          onChangeText={(text) => setBillForm({...billForm, patient_name: text})}
-        />
-      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="Patient Name"
+        placeholderTextColor="#C4C4C4"
+        value={billForm.patient_name}
+        onChangeText={(text) => setBillForm({...billForm, patient_name: text})}
+      />
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Operation Name *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g., Heart Bypass"
-          value={billForm.operation_name}
-          onChangeText={(text) => setBillForm({...billForm, operation_name: text})}
-        />
-      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="Operation Name"
+        placeholderTextColor="#C4C4C4"
+        value={billForm.operation_name}
+        onChangeText={(text) => setBillForm({...billForm, operation_name: text})}
+      />
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Operation Cost (₹) *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="500000"
-          keyboardType="numeric"
-          value={billForm.operation_cost}
-          onChangeText={(text) => setBillForm({...billForm, operation_cost: text})}
-        />
-      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="Operation Cost (₹)"
+        placeholderTextColor="#C4C4C4"
+        keyboardType="numeric"
+        value={billForm.operation_cost}
+        onChangeText={(text) => setBillForm({...billForm, operation_cost: text})}
+      />
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Claim Approved (₹) *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="375000"
-          keyboardType="numeric"
-          value={billForm.claim_approved}
-          onChangeText={(text) => setBillForm({...billForm, claim_approved: text})}
-        />
-      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="Claim Amount (₹)"
+        placeholderTextColor="#C4C4C4"
+        keyboardType="numeric"
+        value={billForm.claim_amount}
+        onChangeText={(text) => setBillForm({...billForm, claim_amount: text})}
+      />
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Insurance Company</Text>
-        <View style={styles.pickerContainer}>
-          {['HealthPlus', 'MediCare', 'LifeCare', 'StarHealth'].map((company) => (
-            <TouchableOpacity
-              key={company}
-              style={[
-                styles.pickerOption,
-                billForm.insurance_company === company && styles.pickerOptionActive
-              ]}
-              onPress={() => setBillForm({...billForm, insurance_company: company})}
-            >
-              <Text style={[
-                styles.pickerText,
-                billForm.insurance_company === company && styles.pickerTextActive
-              ]}>{company}</Text>
-            </TouchableOpacity>
-          ))}
+      <Text style={styles.label}>Insurance Company</Text>
+      <View style={styles.buttonGroup}>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              billForm.insurance_company === 'HealthPlus' && styles.optionBtnActive
+            ]}
+            onPress={() => setBillForm({...billForm, insurance_company: 'HealthPlus'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              billForm.insurance_company === 'HealthPlus' && styles.optionBtnTextActive
+            ]}>HealthPlus</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              billForm.insurance_company === 'MediCare' && styles.optionBtnActive
+            ]}
+            onPress={() => setBillForm({...billForm, insurance_company: 'MediCare'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              billForm.insurance_company === 'MediCare' && styles.optionBtnTextActive
+            ]}>MediCare</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              billForm.insurance_company === 'LifeCare' && styles.optionBtnActive
+            ]}
+            onPress={() => setBillForm({...billForm, insurance_company: 'LifeCare'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              billForm.insurance_company === 'LifeCare' && styles.optionBtnTextActive
+            ]}>LifeCare</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[
+              styles.optionBtn,
+              billForm.insurance_company === 'StarHealth' && styles.optionBtnActive
+            ]}
+            onPress={() => setBillForm({...billForm, insurance_company: 'StarHealth'})}
+          >
+            <Text style={[
+              styles.optionBtnText,
+              billForm.insurance_company === 'StarHealth' && styles.optionBtnTextActive
+            ]}>StarHealth</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      <TouchableOpacity style={styles.submitButton} onPress={handleBill} disabled={loading}>
+      <TouchableOpacity 
+        style={styles.submitButton} 
+        onPress={handleBill} 
+        disabled={loading}
+      >
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
@@ -406,34 +549,47 @@ const InsuranceScreen = () => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#667eea', '#764ba2']}
-        style={styles.header}
-      >
-        <Text style={styles.headerTitle}>Insurance Management</Text>
-        <Text style={styles.headerSubtitle}>Predict claims & generate bills</Text>
-      </LinearGradient>
+      {/* Header */}
+    <View style={styles.header}>
+  <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+    <Ionicons name="chevron-back" size={24} color="#000" />
+  </TouchableOpacity>
 
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'predict' && styles.tabActive]}
-          onPress={() => setActiveTab('predict')}
-        >
-          <Text style={[styles.tabText, activeTab === 'predict' && styles.tabTextActive]}>
-            Prediction
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'bill' && styles.tabActive]}
-          onPress={() => setActiveTab('bill')}
-        >
-          <Text style={[styles.tabText, activeTab === 'bill' && styles.tabTextActive]}>
-            Generate Bill
-          </Text>
-        </TouchableOpacity>
+  <Text style={styles.headerTitle}>Insurance</Text>
+
+  {/* Spacer for alignment */}
+  <View style={styles.headerSpacer} />
+</View>
+
+      {/* Tabs */}
+      <View style={styles.tabsWrapper}>
+        <View style={styles.tabs}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'predict' && styles.tabActive]}
+            onPress={() => setActiveTab('predict')}
+          >
+            <Text style={[styles.tabText, activeTab === 'predict' && styles.tabTextActive]}>
+              Prediction
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'bill' && styles.tabActive]}
+            onPress={() => setActiveTab('bill')}
+          >
+            <Text style={[styles.tabText, activeTab === 'bill' && styles.tabTextActive]}>
+              Generate Bill
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView style={styles.content}>
+      {/* Content */}
+      <ScrollView 
+        style={styles.scrollContent} 
+        contentContainerStyle={styles.scrollContentContainer}
+        showsVerticalScrollIndicator={false}
+      >
         {activeTab === 'predict' ? renderPredictionForm() : renderBillForm()}
       </ScrollView>
 
@@ -446,123 +602,129 @@ const InsuranceScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f7fa',
+    backgroundColor: '#fff',
   },
   header: {
-    padding: 24,
-    paddingTop: 48,
-    paddingBottom: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: '#fff',
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+  },
+  backIcon: {
+    fontSize: 22,
+    color: '#000',
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000',
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
+  headerSpacer: {
+    width: 32,
   },
-  tabContainer: {
+  tabsWrapper: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E8',
+  },
+  tabs: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginTop: -16,
-    borderRadius: 12,
-    padding: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    gap: 12,
   },
   tab: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 24,
     alignItems: 'center',
-    borderRadius: 8,
+    backgroundColor: '#fff',
   },
   tabActive: {
-    backgroundColor: '#667eea',
+    backgroundColor: '#7475B4',
   },
   tabText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: '#000',
   },
   tabTextActive: {
     color: '#fff',
   },
-  content: {
+  scrollContent: {
     flex: 1,
-    padding: 16,
+  },
+  scrollContentContainer: {
+    paddingTop: 20,
   },
   formContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 20,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 40,
   },
   input: {
+    height: 50,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#E8E8E8',
     borderRadius: 8,
-    padding: 12,
-    fontSize: 15,
-    backgroundColor: '#f9f9f9',
-  },
-  pickerContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  pickerOption: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#f9f9f9',
-  },
-  pickerOptionActive: {
-    backgroundColor: '#667eea',
-    borderColor: '#667eea',
-  },
-  pickerText: {
     fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+    color: '#000',
+    backgroundColor: '#fff',
+    marginBottom: 16,
   },
-  pickerTextActive: {
+  label: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 12,
+  },
+  buttonGroup: {
+    marginBottom: 20,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  optionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAEAF8',
+  },
+  optionBtnActive: {
+    backgroundColor: '#7475B4',
+  },
+  optionBtnText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#000',
+  },
+  optionBtnTextActive: {
     color: '#fff',
   },
   submitButton: {
-    backgroundColor: '#667eea',
+    backgroundColor: '#7475B4',
     borderRadius: 8,
-    padding: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     marginTop: 10,
   },
   submitButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
@@ -584,9 +746,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#000',
     marginBottom: 20,
     textAlign: 'center',
   },
@@ -605,7 +767,7 @@ const styles = StyleSheet.create({
   },
   resultValue: {
     fontSize: 18,
-    color: '#333',
+    color: '#000',
     fontWeight: 'bold',
   },
   resultValueWarning: {
@@ -614,7 +776,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   highlightCard: {
-    backgroundColor: '#667eea',
+    backgroundColor: '#7475B4',
     borderRadius: 8,
     padding: 16,
     marginBottom: 12,
@@ -639,9 +801,9 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   closeButton: {
-    backgroundColor: '#333',
+    backgroundColor: '#000',
     borderRadius: 8,
-    padding: 14,
+    paddingVertical: 14,
     alignItems: 'center',
     marginTop: 10,
   },
@@ -659,7 +821,7 @@ const styles = StyleSheet.create({
   billNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#667eea',
+    color: '#7475B4',
   },
   billDate: {
     fontSize: 12,
@@ -675,7 +837,7 @@ const styles = StyleSheet.create({
   patientName: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#000',
     marginBottom: 8,
   },
   patientDetail: {
@@ -686,7 +848,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#000',
     marginTop: 12,
     marginBottom: 12,
   },
@@ -704,7 +866,7 @@ const styles = StyleSheet.create({
   },
   billValue: {
     fontSize: 14,
-    color: '#333',
+    color: '#000',
     fontWeight: '600',
   },
   billValueSuccess: {
@@ -735,7 +897,7 @@ const styles = StyleSheet.create({
   },
   totalValue: {
     fontSize: 16,
-    color: '#333',
+    color: '#000',
     fontWeight: '600',
   },
   totalValueSuccess: {
@@ -749,18 +911,17 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     marginTop: 12,
     borderTopWidth: 2,
-    borderTopColor: '#667eea',
+    borderTopColor: '#7475B4',
   },
   finalLabel: {
     fontSize: 16,
-    color: '#333',
+    color: '#000',
     fontWeight: 'bold',
   },
   finalValue: {
     fontSize: 22,
-    color: '#667eea',
+    color: '#7475B4',
     fontWeight: 'bold',
   },
 });
-
 export default InsuranceScreen;

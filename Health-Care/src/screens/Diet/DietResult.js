@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   StatusBar,
+   SafeAreaView,
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -260,7 +261,7 @@ const BMIGauge = ({ bmi }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
       {/* Header */}
@@ -347,7 +348,7 @@ const BMIGauge = ({ bmi }) => {
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
-    </View>
+   </SafeAreaView>
   );
 };
 

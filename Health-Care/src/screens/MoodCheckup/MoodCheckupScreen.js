@@ -8,6 +8,7 @@ import {
   StatusBar,
   ScrollView,
   Dimensions,
+  SafeAreaView,
   Alert,
   Image,
 } from 'react-native';
@@ -318,7 +319,7 @@ export default function MoodCheckupScreen() {
     const monthYear = `${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
 
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBackPress}>
@@ -363,12 +364,12 @@ export default function MoodCheckupScreen() {
             ))}
           </View>
         </ScrollView>
-      </View>
+     </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBackPress}>
@@ -498,7 +499,7 @@ export default function MoodCheckupScreen() {
         )}
         <View style={styles.bottomSpacing} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -506,7 +507,7 @@ export default function MoodCheckupScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   header: { 
-   marginTop: StatusBar.currentHeight || 40 ,
+    marginTop: StatusBar.currentHeight || 0,
     flexDirection: "row", 
     alignItems: "center", 
     justifyContent: "space-between",

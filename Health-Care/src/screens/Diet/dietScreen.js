@@ -11,10 +11,72 @@ import {
   Alert,
   StatusBar,
   FlatList,
+  Platform,
+  Modal,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from "../../config/config";
+
+const CustomPicker = ({ selectedValue, onValueChange, items, placeholder }) => {
+  const [modalVisible, setModalVisible] = useState(false);
+  
+  const getLabel = () => {
+    const selected = items.find(item => item.value === selectedValue);
+    return selected ? selected.label : placeholder;
+  };
+
+  return (
+    <>
+      <TouchableOpacity 
+        style={styles.customPickerButton}
+        onPress={() => setModalVisible(true)}
+      >
+        <Text style={[styles.customPickerText, !selectedValue && styles.placeholderText]}>
+          {getLabel()}
+        </Text>
+        <Text style={styles.dropdownArrow}>▼</Text>
+      </TouchableOpacity>
+
+      <Modal
+        visible={modalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setModalVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <ScrollView style={styles.modalScroll}>
+              {items.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.modalItem,
+                    selectedValue === item.value && styles.modalItemSelected
+                  ]}
+                  onPress={() => {
+                    onValueChange(item.value);
+                    setModalVisible(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.modalItemText,
+                    selectedValue === item.value && styles.modalItemTextSelected
+                  ]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
+  );
+};
 
 const DietScreen = ({ navigation }) => {
   const [formData, setFormData] = useState({
@@ -38,6 +100,54 @@ const DietScreen = ({ navigation }) => {
   const [loadingSavedDiets, setLoadingSavedDiets] = useState(false);
   const [activeTab, setActiveTab] = useState('generate');
   const [userToken, setUserToken] = useState(null);
+
+  const genderOptions = [
+    { label: 'Male', value: 'male' },
+    { label: 'Female', value: 'female' },
+  ];
+
+  const regionOptions = [
+    { label: 'North India', value: 'North India' },
+    { label: 'South India', value: 'South India' },
+    { label: 'East India', value: 'East India' },
+    { label: 'West India', value: 'West India' },
+    { label: 'Central India', value: 'Central India' },
+  ];
+
+  const goalOptions = [
+    { label: 'Weight Loss', value: 'weight loss' },
+    { label: 'Muscle Building', value: 'muscle building' },
+    { label: 'Weight Gain', value: 'weight gain' },
+    { label: 'Maintain Weight', value: 'maintain weight' },
+  ];
+
+  const foodPreferenceOptions = [
+    { label: 'Vegetarian', value: 'vegetarian' },
+    { label: 'Non-Vegetarian', value: 'non-vegetarian' },
+    { label: 'Vegetarian + Eggs', value: 'vegetarian + eggs' },
+    { label: 'Vegan', value: 'vegan' },
+  ];
+
+  const activityLevelOptions = [
+    { label: 'Sedentary', value: 'sedentary' },
+    { label: 'Light', value: 'light' },
+    { label: 'Moderate', value: 'moderate' },
+    { label: 'Active', value: 'active' },
+    { label: 'Very Active', value: 'very active' },
+  ];
+
+  const budgetOptions = [
+    { label: 'Low Budget (₹50-100/day)', value: 'low_budget' },
+    { label: 'Moderate Budget (₹100-200/day)', value: 'moderate_budget' },
+    { label: 'Comfortable Budget (₹200-400/day)', value: 'comfortable_budget' },
+    { label: 'Premium Budget (₹400+/day)', value: 'premium_budget' },
+  ];
+
+  const cookingTimeOptions = [
+    { label: 'Minimal (15-30 min)', value: 'Minimal' },
+    { label: 'Moderate (30-60 min)', value: 'Moderate' },
+    { label: 'Flexible (1+ hours)', value: 'Flexible' },
+  ];
 
   useEffect(() => {
     fetchUserToken();
@@ -294,15 +404,17 @@ const DietScreen = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>‹</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Diet Plan</Text>
-        <View style={styles.headerPlaceholder} />
+      <View style={styles.headerSafeArea}>
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>‹</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Diet Plan</Text>
+          <View style={styles.headerPlaceholder} />
+        </View>
       </View>
 
       <View style={styles.tabContainer}>
@@ -362,115 +474,67 @@ const DietScreen = ({ navigation }) => {
                 />
               </View>
               <View style={styles.inputHalf}>
-                <View style={styles.pickerWrapper}>
-                  <Picker
-                    selectedValue={formData.sex}
-                    onValueChange={(value) => handleInputChange('sex', value)}
-                    style={styles.pickerStyle}
-                  >
-                    <Picker.Item label="Gender" value="" color="#BDBDBD" />
-                    <Picker.Item label="Male" value="male" />
-                    <Picker.Item label="Female" value="female" />
-                  </Picker>
-                </View>
+                <CustomPicker
+                  selectedValue={formData.sex}
+                  onValueChange={(value) => handleInputChange('sex', value)}
+                  items={genderOptions}
+                  placeholder="Gender"
+                />
               </View>
             </View>
 
             <View style={styles.dropdownContainer}>
-              <View style={styles.pickerWrapper}>
-                <Picker
-                  selectedValue={formData.region}
-                  onValueChange={(value) => handleInputChange('region', value)}
-                  style={styles.pickerStyle}
-                >
-                  <Picker.Item label="Region" value="" color="#BDBDBD" />
-                  <Picker.Item label="North India" value="North India" />
-                  <Picker.Item label="South India" value="South India" />
-                  <Picker.Item label="East India" value="East India" />
-                  <Picker.Item label="West India" value="West India" />
-                  <Picker.Item label="Central India" value="Central India" />
-                </Picker>
-              </View>
+              <CustomPicker
+                selectedValue={formData.region}
+                onValueChange={(value) => handleInputChange('region', value)}
+                items={regionOptions}
+                placeholder="Region"
+              />
             </View>
 
             <View style={styles.dropdownContainer}>
-              <View style={styles.pickerWrapper}>
-                <Picker
-                  selectedValue={formData.goal}
-                  onValueChange={(value) => handleInputChange('goal', value)}
-                  style={styles.pickerStyle}
-                >
-                  <Picker.Item label="Goal" value="" color="#BDBDBD" />
-                  <Picker.Item label="Weight Loss" value="weight loss" />
-                  <Picker.Item label="Muscle Building" value="muscle building" />
-                  <Picker.Item label="Weight Gain" value="weight gain" />
-                  <Picker.Item label="Maintain Weight" value="maintain weight" />
-                </Picker>
-              </View>
+              <CustomPicker
+                selectedValue={formData.goal}
+                onValueChange={(value) => handleInputChange('goal', value)}
+                items={goalOptions}
+                placeholder="Goal"
+              />
             </View>
 
             <View style={styles.dropdownContainer}>
-              <View style={styles.pickerWrapper}>
-                <Picker
-                  selectedValue={formData.food_preference}
-                  onValueChange={(value) => handleInputChange('food_preference', value)}
-                  style={styles.pickerStyle}
-                >
-                  <Picker.Item label="Food Preference" value="" color="#BDBDBD" />
-                  <Picker.Item label="Vegetarian" value="vegetarian" />
-                  <Picker.Item label="Non-Vegetarian" value="non-vegetarian" />
-                  <Picker.Item label="Vegetarian + Eggs" value="vegetarian + eggs" />
-                  <Picker.Item label="Vegan" value="vegan" />
-                </Picker>
-              </View>
+              <CustomPicker
+                selectedValue={formData.food_preference}
+                onValueChange={(value) => handleInputChange('food_preference', value)}
+                items={foodPreferenceOptions}
+                placeholder="Food Preference"
+              />
             </View>
 
             <View style={styles.dropdownContainer}>
-              <View style={styles.pickerWrapper}>
-                <Picker
-                  selectedValue={formData.activity_level}
-                  onValueChange={(value) => handleInputChange('activity_level', value)}
-                  style={styles.pickerStyle}
-                >
-                  <Picker.Item label="Activity Level" value="" color="#BDBDBD" />
-                  <Picker.Item label="Sedentary" value="sedentary" />
-                  <Picker.Item label="Light" value="light" />
-                  <Picker.Item label="Moderate" value="moderate" />
-                  <Picker.Item label="Active" value="active" />
-                  <Picker.Item label="Very Active" value="very active" />
-                </Picker>
-              </View>
+              <CustomPicker
+                selectedValue={formData.activity_level}
+                onValueChange={(value) => handleInputChange('activity_level', value)}
+                items={activityLevelOptions}
+                placeholder="Activity Level"
+              />
             </View>
 
             <View style={styles.dropdownContainer}>
-              <View style={styles.pickerWrapper}>
-                <Picker
-                  selectedValue={formData.budget_category}
-                  onValueChange={(value) => handleInputChange('budget_category', value)}
-                  style={styles.pickerStyle}
-                >
-                  <Picker.Item label="Budget" value="" color="#BDBDBD" />
-                  <Picker.Item label="Low Budget (₹50-100/day)" value="low_budget" />
-                  <Picker.Item label="Moderate Budget (₹100-200/day)" value="moderate_budget" />
-                  <Picker.Item label="Comfortable Budget (₹200-400/day)" value="comfortable_budget" />
-                  <Picker.Item label="Premium Budget (₹400+/day)" value="premium_budget" />
-                </Picker>
-              </View>
+              <CustomPicker
+                selectedValue={formData.budget_category}
+                onValueChange={(value) => handleInputChange('budget_category', value)}
+                items={budgetOptions}
+                placeholder="Budget"
+              />
             </View>
 
             <View style={styles.dropdownContainer}>
-              <View style={styles.pickerWrapper}>
-                <Picker
-                  selectedValue={formData.cooking_time_available}
-                  onValueChange={(value) => handleInputChange('cooking_time_available', value)}
-                  style={styles.pickerStyle}
-                >
-                  <Picker.Item label="Cooking Time" value="" color="#BDBDBD" />
-                  <Picker.Item label="Minimal (15-30 min)" value="Minimal" />
-                  <Picker.Item label="Moderate (30-60 min)" value="Moderate" />
-                  <Picker.Item label="Flexible (1+ hours)" value="Flexible" />
-                </Picker>
-              </View>
+              <CustomPicker
+                selectedValue={formData.cooking_time_available}
+                onValueChange={(value) => handleInputChange('cooking_time_available', value)}
+                items={cookingTimeOptions}
+                placeholder="Cooking Time"
+              />
             </View>
 
             <View style={styles.dropdownContainer}>
@@ -518,8 +582,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+  headerSafeArea: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0,
+  },
   header: {
-    marginTop: StatusBar.currentHeight || 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -600,16 +667,59 @@ const styles = StyleSheet.create({
   dropdownContainer: {
     marginBottom: 12,
   },
-  pickerWrapper: {
+  customPickerButton: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E0E0E0',
     borderRadius: 8,
+    padding: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    height: 50,
+  },
+  customPickerText: {
+    fontSize: 14,
+    color: '#000000',
+  },
+  placeholderText: {
+    color: '#BDBDBD',
+  },
+  dropdownArrow: {
+    fontSize: 10,
+    color: '#666',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    width: '80%',
+    maxHeight: '60%',
     overflow: 'hidden',
   },
-  pickerStyle: {
-    height: 50,
+  modalScroll: {
+    maxHeight: 400,
+  },
+  modalItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  modalItemSelected: {
+    backgroundColor: '#F5F3FF',
+  },
+  modalItemText: {
+    fontSize: 14,
     color: '#000000',
+  },
+  modalItemTextSelected: {
+    color: '#7C6FDC',
+    fontWeight: '600',
   },
   generateButton: {
     backgroundColor: '#7C6FDC',
